@@ -1,4 +1,4 @@
-// 1. Initialize the Scanner
+// 1. Initialize the Scanner here
 let html5QrCode = null;
 let isScanning = true;
 
@@ -6,6 +6,7 @@ const config = { fps: 5, qrbox: { width: 250, height: 250 } };
 
 const HTML5_QR_CODE_CDN = 'https://unpkg.com/html5-qrcode@2.3.8/dist/html5-qrcode.min.js';
 const HTML5_QR_CODE_CDN_FALLBACK = 'https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/dist/html5-qrcode.min.js';
+// 1a. Ensure html5-qrcode library is loaded
 
 function ensureHtml5QrcodeLoaded(timeout = 20000) {
   return new Promise((resolve, reject) => {

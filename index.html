@@ -1,49 +1,31 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BookWorm Library</title>
     <link rel="stylesheet" href="style.css">
-  </head>
-  <body>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+</head>
+<body>
+
     <header>
-      <h1>BookWorm</h1>
+        <h1>📚 BookWorm</h1>
+        <p>Scan a book to add it to your library.</p>
     </header>
 
     <main>
-      <section class="scanner">
-        <h2>Scan Book Barcode</h2>
-        <div id="reader" style="width:100%;max-width:480px;height:360px;background:#000"></div>
-        <!-- Error area and retry button -->
-        <div id="scanner-error" role="alert" aria-live="polite" class="scanner-error" style="display:none"></div>
-        <button id="retry-camera-btn" class="retry-camera" style="display:none">Retry Camera</button>
-
-        <!-- Diagnostics: run basic checks and show results -->
-        <div class="scanner-diag">
-          <button id="run-diagnostics-btn" class="retry-camera">Run Camera Diagnostics</button>
-          <pre id="diagnostics-output" class="diagnostics-output" style="display:none" aria-live="polite"></pre>
+        <div class="scanner">
+            <div id="reader"></div>
         </div>
-      </section>
 
-      <div class="controls">
-        <button id="add-book-btn">Add Book</button>
-      </div>
+        <div class="controls">
+            <button id="export-btn">Export to CSV</button>
+        </div>
 
-      <div class="controls">
-        <button id="add-book-btn">Add Book Manually</button>
-        <button id="export-btn" style="background-color: #28a745; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer;">
-            Export to Excel (CSV)
-        </button>
-     </div>
-      <section id="books">
-        <h2>Books</h2>
-        <ul id="book-list"></ul>
-      </section>
+        <div id="library-grid"></div>
     </main>
 
-    <!-- html5-qrcode library (CDN) -->
-    <script src="https://unpkg.com/html5-qrcode@2.3.8/dist/html5-qrcode.min.js"></script>
     <script src="script.js"></script>
-  </body>
+</body>
 </html>
