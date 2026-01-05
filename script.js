@@ -111,7 +111,7 @@ function startScanner() {
 
   if (!html5QrCode) html5QrCode = new Html5Qrcode('reader');
 
-  html5QrCode.start({ facingMode: 'user' }, config, onScanSuccess)
+  html5QrCode.start({ facingMode: 'environment' }, config, onScanSuccess)
     .then(() => clearScannerError())
     .catch(err => console.error("Scanner won't start:", err));
 }
