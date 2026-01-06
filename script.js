@@ -398,6 +398,15 @@ function renderLibrary() {
     li.append(img, info, del);
     list.appendChild(li);
   });
+    // Update home stats
+  const total = myLibrary.length;
+  const read = myLibrary.filter(b => b.isRead).length;
+  const unread = total - read;
+
+  document.getElementById("stat-count").textContent = total;
+  document.getElementById("stat-read").textContent = read;
+  document.getElementById("stat-unread").textContent = unread;
+
 }
 
 function toggleRead(isbn) {

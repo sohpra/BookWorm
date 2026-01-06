@@ -1,174 +1,50 @@
-/* 1. GENERAL RESET & LAYOUT */
-* { 
-    box-sizing: border-box; 
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+/* RESET */
+* {
+  box-sizing: border-box;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
-body { 
-    margin: 0; 
-    background: #f0f2f5; 
-    color: #1c1e21; 
-    line-height: 1.5; 
-    overscroll-behavior: none; /* Prevents "bounce" on mobile */
+/* APP BACKGROUND */
+body {
+  margin: 0;
+  background: radial-gradient(circle at top, #7b6cf6, #5c4ce6);
+  color: #1c1e21;
+  overscroll-behavior: none;
 }
 
-/* 2. VIEW MANAGEMENT */
-.view { 
-    display: none; 
-    padding: 20px; 
-    min-height: 100vh; 
-    width: 100%; 
+/* VIEWS */
+.view {
+  display: none;
+  padding: 20px;
+  min-height: 100vh;
+  width: 100%;
+  animation: fadeIn .25s ease;
 }
 
-/* 3. WELCOME SCREEN */
-#view-home { 
-    display: flex; 
-    flex-direction: column; 
-    align-items: center; 
-    justify-content: center; 
-    background: #6c5ce7; 
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
 }
 
-.welcome-card { 
-    background: white; 
-    padding: 40px; 
-    border-radius: 24px; 
-    text-align: center; 
-    width: 90%; 
-    max-width: 400px; 
-    box-shadow: 0 10px 25px rgba(0,0,0,0.2); 
+/* HOME */
+#view-home {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-/* 4. BUTTONS */
-.menu-btn { 
-    width: 100%; 
-    padding: 16px; 
-    margin: 10px 0; 
-    border-radius: 12px; 
-    border: none; 
-    font-size: 1rem; 
-    font-weight: bold; 
-    cursor: pointer; 
+.welcome-card {
+  background: white;
+  padding: 46px;
+  border-radius: 28px;
+  width: 92%;
+  max-width: 420px;
+  text-align: center;
+  box-shadow: 0 30px 60px rgba(0,0,0,.18);
 }
 
-.primary { background: #007bff; color: white; }
-.secondary { background: #e4e6eb; color: #050505; }
-.orange-debug { background: #ff9f43 !important; color: white; }
-
-.sync-btn { 
-    background: #0084ff; 
-    color: white; 
-    border: none; 
-    padding: 8px 16px; 
-    border-radius: 8px; 
-    font-weight: 600; 
-}
-
-.back-btn { 
-    background: white; 
-    border: 1px solid #ddd; 
-    padding: 8px 16px; 
-    border-radius: 8px; 
-    margin-bottom: 10px;
-}
-
-/* 5. SCANNER (THE CORE FIX) */
-.viewport { 
-    width: 100%; 
-    height: 350px; /* Fixed height is required for Quagga */
-    background: #000; 
-    border-radius: 16px; 
-    overflow: hidden; 
-    position: relative; 
-    margin: 10px 0;
-    display: block !important; 
-}
-
-/* This ensures the video fills the 350px box correctly */
-.viewport video, .viewport canvas { 
-    width: 100%; 
-    height: 100%; 
-    object-fit: cover; 
-    position: absolute;
-    top: 0;
-    left: 0;
-}
-
-/* 6. LIBRARY LIST */
-.header-row { 
-    display: flex; 
-    align-items: center; 
-    justify-content: space-between; 
-    margin-bottom: 20px; 
-}
-
-#book-list { list-style: none; padding: 0; }
-
-.book-item { 
-    display: flex; 
-    background: white; 
-    padding: 12px; 
-    border-radius: 12px; 
-    margin-bottom: 12px; 
-    align-items: center; 
-    box-shadow: 0 2px 4px rgba(0,0,0,0.05); 
-}
-
-.book-item img { 
-    width: 50px; 
-    height: 75px; 
-    border-radius: 4px; 
-    object-fit: cover; 
-    margin-right: 15px; 
-}
-
-.book-info { flex: 1; }
-
-.status-flag { 
-    font-size: 0.75rem; 
-    padding: 4px 10px; 
-    border-radius: 20px; 
-    display: inline-block; 
-    margin-top: 6px; 
-    font-weight: 600; 
-}
-
-.read { background: #e7f3ff; color: #1877f2; }
-.unread { background: #f2f2f2; color: #606770; }
-
-.delete-btn { 
-    background: none; 
-    border: none; 
-    font-size: 1.4rem; 
-    cursor: pointer; 
-}
-
-/* 7. MODAL & TOASTS */
-.modal-overlay { 
-    position: fixed; 
-    top:0; left:0; width:100%; height:100%; 
-    background:rgba(0,0,0,0.85); 
-    display:flex; align-items:center; justify-content:center; 
-    z-index:9999; 
-}
-
-.modal-card { 
-    background:white; 
-    padding:30px; 
-    border-radius:20px; 
-    width:85%; 
-    max-width:350px; 
-    text-align:center; 
-}
-
-.toast { 
-    position: fixed; 
-    top: 20px; 
-    left: 50%; 
-    transform: translateX(-50%); 
-    padding: 12px 24px; 
-    border-radius: 50px; 
-    color: white; 
-    z-index: 10001; 
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15); 
-}
+/* HOME CONTENT */
+.app-logo { font-size: 4.5rem; margin-bottom: 15px; }
+.tagline { opacity: .7; margin: 8px 0 2
