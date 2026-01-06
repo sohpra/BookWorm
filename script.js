@@ -81,6 +81,12 @@ async function onDetected(data) {
 /* ===================== BOOK FLOW ===================== */
 async function handleISBN(isbn) {
     isbn = isbn.replace(/[^0-9X]/gi, "");   // ← ADD THIS LINE
+
+    if (!isValidISBN(isbn)) {
+        showToast("This barcode is not a book ISBN", "#dc3545");
+        showView("view-home");
+        return;
+    }
     showToast("Searching...", "#6c5ce7");
 
   try {
@@ -203,6 +209,28 @@ function showToast(msg, color) {
   t.style.background = color;
   document.body.appendChild(t);
   setTimeout(() => t.remove(), 2500);
+}
+
+function isValidISBN(isbn) {
+  if (isbn.length === 10) {
+    let sum = 0;
+    for (let i = 0; i < 10; i++) {
+      let c = isbn[i] === 'X' ? 10 : parseInt(isbn[i]);
+      sum += c * (10 - i);
+    }
+    return sum % 11 === 0;
+  }
+
+  if (isbn.length === 13) {
+    let sum = 0;
+    for (let i = 0; i < 13; i++) {
+      let n = parseInt(isbn[i]);
+      sum += n * (i % 2 === 0 ? 1 : 3);
+    }
+    return sum % 10 === 0;
+  }
+
+  return false;
 }
 
 /* ===================== MANUAL ISBN ===================== */
