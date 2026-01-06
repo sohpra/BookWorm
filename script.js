@@ -2,8 +2,16 @@
 let html5QrCode = null;
 let isScanning = true;
 
-const config = { fps: 5, qrbox: { width: 250, height: 250 } };
-
+//const config = { fps: 5, qrbox: { width: 250, height: 250 } };
+const config = { 
+    fps: 10, 
+    qrbox: { width: 250, height: 150 },
+    // Add this part to help with focus:
+    videoConstraints: {
+        focusMode: "continuous",
+        advanced: [{ zoom: 2.0 }] // This zooms in slightly
+    }
+};
 const HTML5_QR_CODE_CDN = 'https://unpkg.com/html5-qrcode@2.3.8/dist/html5-qrcode.min.js';
 const HTML5_QR_CODE_CDN_FALLBACK = 'https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/dist/html5-qrcode.min.js';
 // 1a. Ensure html5-qrcode library is loaded
