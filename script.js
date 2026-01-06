@@ -1,12 +1,34 @@
-// 1. GLOBAL STATE & CONFIG
+/**
+ * 1. GLOBAL STATE & CONFIGURATION
+ */
 const Quagga_CDN = "https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js";
 let myLibrary = [];
 let isScanning = true;
 let lastResult = null;
 let count = 0;
 
-// 2. LIBRARY LOADER (Ensures Quagga is ready)
-function loadQuagga() {
+/**
+ * 2. MATHEMATICAL VALIDATION (ISBN-13 Checksum)
+ * This prevents "phantom" reads by ensuring the 13th digit matches the 
+ * mathematical result of the first 12.
+ */
+function isValidISBN13(isbn) {
+    // Must be 13 digits and start with 978 or 979
+    if (!/^97[89]\d{10}$/.test(isbn)) return false;
+
+    let sum = 0;
+    for (let i = 0; i < 12; i++) {
+        // Multiply even indices by 1, odd by 3
+        sum += parseInt(isbn[i]) * (i % 2 === 0 ? 1 : 3);
+    }
+    const checkDigit = (10 - (sum % 10)) % 10;
+    return checkDigit === parseInt(isbn[12]);
+}
+
+/**
+ * 3. SCANNER INITIALIZATION
+ */
+async function loadQuagga() {
     return new Promise((resolve, reject) => {
         if (window.Quagga) return resolve();
         const script = document.createElement("script");
@@ -17,7 +39,6 @@ function loadQuagga() {
     });
 }
 
-// 3. INITIALIZE SCANNER
 async function startScanner() {
     try {
         await loadQuagga();
@@ -29,44 +50,47 @@ async function startScanner() {
                 target: document.querySelector('#interactive'),
                 constraints: {
                     facingMode: "environment",
-                    aspectRatio: { min: 1, max: 2 }
+                    aspectRatio: { min: 1, max: 2 },
+                    // Try to force high resolution for sharper barcode lines
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
                 },
             },
             decoder: {
-                readers: ["ean_reader"] // Focus strictly on ISBN format
+                readers: ["ean_reader"] // EAN-13 is the standard for ISBN
             },
             locate: true,
             halfSample: true,
-            patchSize: "medium"
+            patchSize: "medium",
+            frequency: 10
         }, function (err) {
             if (err) {
-                console.error(err);
                 document.getElementById('scanner-error').textContent = "Camera Error: " + err;
                 return;
             }
-            console.log("Quagga Ready.");
             Quagga.start();
         });
 
         Quagga.onDetected(onScanSuccess);
 
     } catch (e) {
-        document.getElementById('scanner-error').textContent = "Failed to load scanner library.";
+        document.getElementById('scanner-error').textContent = "Failed to load scanner.";
     }
 }
 
-// 4. HANDLE SCAN SUCCESS (With Stability Filter)
+/**
+ * 4. SUCCESS HANDLER (The "Hard Guard" Logic)
+ */
 async function onScanSuccess(data) {
     if (!isScanning) return;
     
     const code = data.codeResult.code;
 
-    // RULE 1: Must be an ISBN (Starts with 978 or 979)
-    if (!code.startsWith("978") && !code.startsWith("979")) {
-        return; 
-    }
+    // STEP 1: Math Check (Prefix + Checksum)
+    if (!isValidISBN13(code)) return;
 
-    // RULE 2: Stability Check (Must see same code 5 times to prevent "garbage" reads)
+    // STEP 2: Stability Check (Require 8 consecutive identical reads)
+    // We lowered this slightly from 10 to 8 for better speed, but kept it strict.
     if (code === lastResult) {
         count++;
     } else {
@@ -74,20 +98,18 @@ async function onScanSuccess(data) {
         count = 0;
     }
 
-    if (count >= 5) { 
-        isScanning = false; // Pause scanner
-        console.log("Confirmed ISBN: " + code);
+    if (count >= 8) { 
+        isScanning = false; 
         
-        // Visual Feedback: Green border
+        // Feedback
         const viewport = document.querySelector('#interactive');
-        if(viewport) viewport.style.border = "5px solid #28a745";
-        
-        // Vibrate phone if supported
+        if(viewport) viewport.style.border = "8px solid #28a745";
         if (navigator.vibrate) navigator.vibrate(100);
 
+        console.log("Verified ISBN:", code);
         await handleScannedBook(code);
 
-        // Reset for next scan after a 3-second delay
+        // Reset after 3 seconds
         setTimeout(() => {
             isScanning = true;
             if(viewport) viewport.style.border = "none";
@@ -97,11 +119,12 @@ async function onScanSuccess(data) {
     }
 }
 
-// 5. BOOK LOGIC (Google Books API)
+/**
+ * 5. DATA FETCHING (Google Books API)
+ */
 async function handleScannedBook(isbn) {
-    // Prevent duplicates
     if (myLibrary.some(b => b.isbn === isbn)) {
-        alert("This book is already in your library.");
+        alert("Already in library!");
         return;
     }
 
@@ -109,41 +132,38 @@ async function handleScannedBook(isbn) {
         const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`);
         const data = await res.json();
         
-        if (!data.items || data.items.length === 0) {
-            // Fallback: Add with just the ISBN if API doesn't have details
-            addBookToState({
+        let book;
+        if (data.items && data.items.length > 0) {
+            const info = data.items[0].volumeInfo;
+            book = {
                 id: Date.now().toString(36),
                 isbn: isbn,
-                title: "Unknown Title",
+                title: info.title || "Unknown Title",
+                author: (info.authors && info.authors.join(', ')) || "Unknown Author",
+                image: (info.imageLinks && (info.imageLinks.thumbnail || info.imageLinks.smallThumbnail)) || "https://via.placeholder.com/50x75?text=No+Cover"
+            };
+        } else {
+            // Fallback if details aren't in Google's DB
+            book = {
+                id: Date.now().toString(36),
+                isbn: isbn,
+                title: "ISBN: " + isbn,
                 author: "Unknown Author",
                 image: "https://via.placeholder.com/50x75?text=No+Cover"
-            });
-            return;
+            };
         }
 
-        const info = data.items[0].volumeInfo;
-        const book = {
-            id: Date.now().toString(36),
-            isbn: isbn,
-            title: info.title || "Unknown Title",
-            author: (info.authors && info.authors.join(', ')) || "Unknown Author",
-            image: (info.imageLinks && (info.imageLinks.thumbnail || info.imageLinks.smallThumbnail)) || "https://via.placeholder.com/50x75?text=No+Cover"
-        };
-
-        addBookToState(book);
+        myLibrary.push(book);
+        saveLibrary();
+        renderLibrary();
     } catch (err) {
         console.error("API Error:", err);
-        alert("Error connecting to book database.");
     }
 }
 
-function addBookToState(book) {
-    myLibrary.push(book);
-    saveLibrary();
-    renderLibrary();
-}
-
-// 6. UI & STORAGE
+/**
+ * 6. UI & STORAGE HELPERS
+ */
 function renderLibrary() {
     const list = document.getElementById('book-list');
     if (!list) return;
@@ -165,12 +185,9 @@ function renderLibrary() {
 }
 
 function deleteBook(id) {
-    const idx = myLibrary.findIndex(b => b.id === id);
-    if (idx !== -1) {
-        myLibrary.splice(idx, 1);
-        saveLibrary();
-        renderLibrary();
-    }
+    myLibrary = myLibrary.filter(b => b.id !== id);
+    saveLibrary();
+    renderLibrary();
 }
 
 function saveLibrary() {
@@ -179,32 +196,30 @@ function saveLibrary() {
 
 function loadLibrary() {
     const raw = localStorage.getItem('myLibrary');
-    if (raw) {
-        const data = JSON.parse(raw);
-        myLibrary.length = 0;
-        myLibrary.push(...data);
-    }
+    if (raw) myLibrary = JSON.parse(raw);
 }
 
-// 7. INITIALIZATION ON LOAD
+/**
+ * 7. INITIALIZATION
+ */
 document.addEventListener('DOMContentLoaded', () => {
     loadLibrary();
     renderLibrary();
     startScanner();
 
-    // Manual Add Logic
+    // Manual Add Fallback
     const addBtn = document.getElementById('add-book-btn');
     if (addBtn) {
         addBtn.addEventListener('click', async () => {
-            const isbn = prompt('Enter 13-digit ISBN:');
-            if (isbn && (isbn.length >= 10)) {
-                const cleanIsbn = isbn.replace(/[^0-9Xx]/g, '');
-                await handleScannedBook(cleanIsbn);
+            const isbn = prompt('Enter ISBN (13 digits):');
+            if (isbn) {
+                const clean = isbn.replace(/\D/g, '');
+                if (clean.length >= 10) await handleScannedBook(clean);
             }
         });
     }
 
-    // Export CSV Logic
+    // Export to CSV
     const exportBtn = document.getElementById('export-btn');
     if (exportBtn) {
         exportBtn.addEventListener('click', () => {
