@@ -1,7 +1,7 @@
 /**
  * 1. CONFIGURATION & STATE
  */
-const GOOGLE_SHEET_URL = "PASTE_YOUR_NEW_DEPLOYMENT_URL_HERE"; 
+const GOOGLE_SHEET_URL = "https://script.google.com/macros/s/AKfycbw1oZV1HEO21oadgp6IKkq9XR4v-2fwuinuKnAr_U1SyFYIrWqcNIpy6gux44pzgBAa_g/exec"; 
 const Quagga_CDN = "https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js";
 
 let myLibrary = [];
@@ -57,13 +57,15 @@ async function cloudSync(action, book) {
     try {
         await fetch(GOOGLE_SHEET_URL, {
             method: "POST",
-            mode: "no-cors",
+            mode: "no-cors", 
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: action, data: book })
+            body: JSON.stringify({ 
+                action: action, // This MUST be here
+                data: book 
+            })
         });
-        console.log(`Cloud ${action}: Success`);
     } catch (err) {
-        console.error(`Cloud ${action}: Failed`, err);
+        console.error("Sync Failed:", err);
     }
 }
 
@@ -241,9 +243,29 @@ function showStatus(message, color) {
 }
 
 function saveLibrary() { localStorage.setItem('myLibrary', JSON.stringify(myLibrary)); }
-function loadLibrary() {
-    const raw = localStorage.getItem('myLibrary');
-    if (raw) myLibrary = JSON.parse(raw);
+
+async function loadLibrary() {
+    // 1. Load what's on the phone first (for speed)
+    const localData = localStorage.getItem('myLibrary');
+    if (localData) {
+        myLibrary = JSON.parse(localData);
+        renderLibrary();
+    }
+
+    // 2. Now fetch the "Truth" from Google Cloud
+    if (!GOOGLE_SHEET_URL) return;
+    try {
+        const response = await fetch(GOOGLE_SHEET_URL);
+        const cloudData = await response.json();
+        
+        if (cloudData && cloudData.length > 0) {
+            myLibrary = cloudData;
+            saveLibrary(); // Update phone with cloud data
+            renderLibrary();
+        }
+    } catch (err) {
+        console.log("Offline mode: using local data.");
+    }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
