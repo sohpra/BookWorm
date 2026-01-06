@@ -1,39 +1,24 @@
-/**
- * 1. CONFIGURATION
- */
 const GOOGLE_SHEET_URL = "https://script.google.com/macros/s/AKfycbw1oZV1HEO21oadgp6IKkq9XR4v-2fwuinuKnAr_U1SyFYIrWqcNIpy6gux44pzgBAa_g/exec"; 
 const Quagga_CDN = "https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js";
 
 let myLibrary = [];
 let isScanning = false;
 
-/**
- * 2. NAVIGATION & PERMISSIONS
- */
+// 1. NAVIGATION & PERMISSIONS
 function showView(viewId) {
-    // Hide all views
     document.querySelectorAll('.view').forEach(v => v.style.display = 'none');
-    
-    // Show target view
-    const target = document.getElementById(viewId);
-    target.style.display = 'block';
+    document.getElementById(viewId).style.display = 'block';
     
     if (viewId === 'view-scanner') {
-        // Wait 200ms for the browser to render the div before starting camera
-        setTimeout(() => {
-            startScanner();
-        }, 200);
+        // Wait for DOM to render, then trigger camera
+        setTimeout(() => { startScanner(); }, 300);
     } else {
-        if (window.Quagga) {
-            Quagga.stop();
-        }
+        if (window.Quagga) Quagga.stop();
         isScanning = false;
     }
 }
 
-/**
- * 3. SCANNER LOGIC
- */
+// 2. SCANNER LOGIC (With iPhone Fixes)
 async function startScanner() {
     isScanning = true;
     const container = document.querySelector('#interactive');
@@ -47,10 +32,10 @@ async function startScanner() {
     }
 
     try {
-        // Requesting camera - this triggers the prompt
+        // This line forces the browser to show the "Allow Camera" popup
         await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
     } catch (e) {
-        alert("Camera blocked. Please check your browser settings.");
+        alert("Camera access denied. Please enable it in browser settings.");
         showView('view-home');
         return;
     }
@@ -62,7 +47,6 @@ async function startScanner() {
             target: container,
             constraints: { 
                 facingMode: "environment",
-                // This ensures the best resolution for barcodes
                 width: { ideal: 1280 },
                 height: { ideal: 720 }
             }
@@ -72,7 +56,7 @@ async function startScanner() {
         if (err) return console.error(err);
         Quagga.start();
         
-        // FIX: Manually force the video to play inline for iPhone/Safari
+        // IMPORTANT: Fix for Safari/iPhone to prevent video from going full-screen
         const video = container.querySelector('video');
         if (video) {
             video.setAttribute("playsinline", "true"); 
@@ -84,22 +68,15 @@ async function startScanner() {
     Quagga.onDetected(handleDetection);
 }
 
-
-
 async function handleDetection(data) {
     if (!isScanning) return;
     isScanning = false;
     Quagga.stop();
-
     if (navigator.vibrate) navigator.vibrate(100);
-    
-    const isbn = data.codeResult.code;
-    await handleScannedBook(isbn);
+    await handleScannedBook(data.codeResult.code);
 }
 
-/**
- * 4. BOOK PROCESSING
- */
+// 3. BOOK PROCESSING (With HTTPS Image Fix)
 async function handleScannedBook(isbn) {
     showStatus("Fetching details...", "#6c5ce7");
     try {
@@ -111,7 +88,7 @@ async function handleScannedBook(isbn) {
 
         const hasRead = await askReadStatus(info.title);
 
-        // FIX: Solve the "Mixed Content" warning by forcing the image to HTTPS
+        // FIX: Mixed Content - Force Google Image URLs to use HTTPS
         let imgUrl = info.imageLinks ? info.imageLinks.thumbnail : "https://via.placeholder.com/50x75?text=No+Cover";
         imgUrl = imgUrl.replace("http://", "https://");
 
@@ -128,36 +105,14 @@ async function handleScannedBook(isbn) {
         saveLibrary();
         renderLibrary();
         cloudSync('add', newBook);
-        
         showView('view-library');
     } catch (err) {
-        showStatus("Error", "#dc3545");
+        showStatus("Error finding book", "#dc3545");
         showView('view-home');
     }
 }
 
-/**
- * 5. CLOUD & SYNC
- */
-async function loadLibrary() {
-    showStatus("Syncing...", "#17a2b8");
-    if (!GOOGLE_SHEET_URL || GOOGLE_SHEET_URL.includes("PASTE_YOUR")) return;
-
-    try {
-        const response = await fetch(GOOGLE_SHEET_URL, { redirect: 'follow' });
-        const data = await response.json();
-        if (Array.isArray(data)) {
-            // Overwrite local with cloud (The Ghost Killer)
-            myLibrary = data.map(b => ({ ...b, id: Math.random().toString(36).substr(2, 9) }));
-            saveLibrary();
-            renderLibrary();
-            showStatus("Cloud Synced", "#28a745");
-        }
-    } catch (e) {
-        showStatus("Offline Mode", "#6c757d");
-    }
-}
-
+// 4. CLOUD & UTILS (Keep your existing cloudSync, loadLibrary, etc. here)
 async function cloudSync(action, book) {
     fetch(GOOGLE_SHEET_URL, {
         method: "POST",
@@ -167,15 +122,11 @@ async function cloudSync(action, book) {
     });
 }
 
-/**
- * 6. UI HELPERS
- */
 function askReadStatus(title) {
     return new Promise((resolve) => {
         const modal = document.getElementById('read-modal');
         document.getElementById('modal-title').textContent = title;
         modal.style.display = 'flex';
-        
         document.getElementById('btn-read-yes').onclick = () => { modal.style.display = 'none'; resolve(true); };
         document.getElementById('btn-read-no').onclick = () => { modal.style.display = 'none'; resolve(false); };
     });
@@ -183,41 +134,18 @@ function askReadStatus(title) {
 
 function renderLibrary() {
     const list = document.getElementById('book-list');
-    if (!list) return;
     list.innerHTML = myLibrary.map(b => `
         <li class="book-item">
             <img src="${b.image}">
             <div class="book-info">
                 <strong>${b.title}</strong>
-                <em>${b.author}</em>
-                <br>
-                <span class="status-flag ${b.isRead ? 'read' : 'unread'}" onclick="toggleRead('${b.id}')">
-                    ${b.isRead ? '✅ Read' : '📖 Unread'}
+                <span class="status-flag ${b.isRead?'read':'unread'}" onclick="toggleRead('${b.id}')">
+                    ${b.isRead?'✅ Read':'📖 Unread'}
                 </span>
             </div>
             <button class="delete-btn" onclick="deleteBook('${b.id}')">🗑️</button>
         </li>
     `).join('');
-}
-
-function toggleRead(id) {
-    const book = myLibrary.find(b => b.id === id);
-    if (book) {
-        book.isRead = !book.isRead;
-        renderLibrary();
-        saveLibrary();
-        cloudSync('update', book);
-    }
-}
-
-function deleteBook(id) {
-    const book = myLibrary.find(b => b.id === id);
-    if (book && confirm(`Delete "${book.title}"?`)) {
-        myLibrary = myLibrary.filter(b => b.id !== id);
-        renderLibrary();
-        saveLibrary();
-        cloudSync('delete', book);
-    }
 }
 
 function saveLibrary() { localStorage.setItem('myLibrary', JSON.stringify(myLibrary)); }
@@ -226,12 +154,12 @@ function showStatus(msg, color) {
     const t = document.createElement("div"); t.className = "toast";
     t.textContent = msg; t.style.background = color;
     document.body.appendChild(t);
-    setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 400); }, 2000);
+    setTimeout(() => t.remove(), 2000);
 }
 
-// Initial Load
-document.addEventListener('DOMContentLoaded', () => {
+// Load on start
+window.onload = () => {
     const saved = localStorage.getItem('myLibrary');
     if (saved) { myLibrary = JSON.parse(saved); renderLibrary(); }
     showView('view-home');
-});
+};
