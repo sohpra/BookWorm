@@ -25,31 +25,34 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 async function loadLibrary() {
-    // Step 1: Show local data first so the user isn't waiting on a blank screen
+    // 1. Load local data just for a split-second "instant" feel
     const localData = localStorage.getItem('myLibrary');
     if (localData) {
         myLibrary = JSON.parse(localData);
         renderLibrary();
     }
 
-    // Step 2: Fetch the "Live" data from Google Sheets (doGet)
+    // 2. Fetch the REAL data from Google Sheets
     if (!GOOGLE_SHEET_URL || GOOGLE_SHEET_URL.includes("PASTE_YOUR")) return;
     
-    showStatus("Syncing with Cloud...", "#17a2b8");
-    
     try {
-        const response = await fetch(GOOGLE_SHEET_URL);
+        const response = await fetch(GOOGLE_SHEET_URL, { redirect: "follow" });
         const cloudData = await response.json();
         
-        if (cloudData && Array.isArray(cloudData)) {
-            myLibrary = cloudData;
-            saveLibrary(); // Update phone memory
-            renderLibrary(); // Refresh UI
-            showStatus("Cloud Synced", "#28a745");
+        // 3. OVERWRITE local memory with Cloud data to kill "ghosts"
+        if (Array.isArray(cloudData)) {
+            myLibrary = cloudData; 
+            // Add unique IDs to cloud books so the UI can still track them
+            myLibrary = myLibrary.map(book => ({
+                ...book,
+                id: book.id || Math.random().toString(36).substr(2, 9)
+            }));
+            
+            saveLibrary(); // Update phone storage with the clean list
+            renderLibrary(); // Re-draw the screen
         }
     } catch (err) {
-        console.error("Cloud fetch failed:", err);
-        showStatus("Offline Mode", "#6c757d");
+        console.error("Cloud sync failed:", err);
     }
 }
 
@@ -208,22 +211,24 @@ function toggleRead(id) {
     }
 }
 
-function deleteBook(id) {
-    // Find the specific book in the local array
+async function deleteBook(id) {
     const bookToDelete = myLibrary.find(b => b.id === id);
-    
-    if (bookToDelete && confirm(`Are you sure you want to delete "${bookToDelete.title}"?`)) {
-        // 1. Update the cloud (do this first or simultaneously)
-        cloudSync('delete', bookToDelete); 
+    if (!bookToDelete) return;
 
-        // 2. Remove from local array
+    if (confirm(`Delete "${bookToDelete.title}"?`)) {
+        // Remove from UI and Local Storage immediately
         myLibrary = myLibrary.filter(b => b.id !== id);
-        
-        // 3. Update local storage and UI
         saveLibrary();
         renderLibrary();
-        
-        showStatus("Deleted from Cloud", "#dc3545");
+
+        // Tell Google to delete it
+        try {
+            await cloudSync('delete', bookToDelete);
+            showStatus("Deleted everywhere", "#dc3545");
+        } catch (err) {
+            // Even if the cloud call fails, the book is gone from the UI
+            console.log("Cloud delete failed, but local copy removed.");
+        }
     }
 }
 
