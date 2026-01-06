@@ -1,212 +1,219 @@
-// 1. CONFIGURATION
-const GOOGLE_SHEET_URL = "https://script.google.com/macros/s/AKfycbw1oZV1HEO21oadgp6IKkq9XR4v-2fwuinuKnAr_U1SyFYIrWqcNIpy6gux44pzgBAa_g/exec"; 
+/* ===================== CONFIG ===================== */
+const GOOGLE_SHEET_URL = "https://script.google.com/macros/s/AKfycbw1oZV1HEO21oadgp6IKkq9XR4v-2fwuinuKnAr_U1SyFYIrWqcNIpy6gux44pzgBAa_g/exec";
 const Quagga_CDN = "https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js";
 
 let myLibrary = [];
-let isScanning = false;
+let scannerActive = false;
+let detectionLocked = false;
+let mediaStream = null;
 
-// 2. NAVIGATION (The "Visibility First" Logic)
-function showView(viewId) {
-    // Hide all views
-    document.querySelectorAll('.view').forEach(v => v.style.display = 'none');
-    
-    // Show selected view
-    const target = document.getElementById(viewId);
-    if (target) target.style.display = 'block';
+/* ===================== NAVIGATION ===================== */
+function showView(id) {
+  document.querySelectorAll('.view').forEach(v => v.style.display = 'none');
+  document.getElementById(id).style.display = 'block';
 
-    if (viewId === 'view-scanner') {
-        // ESSENTIAL: Wait for the browser to "paint" the div before starting camera
-        setTimeout(() => { 
-            startScanner(); 
-        }, 300);
-    } else {
-        if (window.Quagga) {
-            Quagga.stop();
-            // Clear the video element to release the camera hardware
-            document.getElementById('interactive').innerHTML = '';
-        }
-        isScanning = false;
-    }
+  if (id === 'view-scanner') {
+    setTimeout(startScanner, 200);
+  } else {
+    stopScanner();
+  }
 }
 
-// 3. SCANNER LOGIC
+/* ===================== SCANNER ===================== */
+async function loadQuagga() {
+  if (window.Quagga) return;
+  const s = document.createElement("script");
+  s.src = Quagga_CDN;
+  const p = new Promise((res, rej) => { s.onload = res; s.onerror = rej; });
+  document.head.appendChild(s);
+  await p;
+}
+
 async function startScanner() {
-    isScanning = true;
-    const container = document.getElementById('interactive');
-    container.innerHTML = ''; // Reset container
+  if (scannerActive) return;
+  scannerActive = true;
+  detectionLocked = false;
 
-    // Load library if not present
-    if (!window.Quagga) {
-        const s = document.createElement("script");
-        s.src = Quagga_CDN;
-        await new Promise(r => s.onload = r);
-        document.head.appendChild(s);
-    }
+  const box = document.getElementById('interactive');
+  box.innerHTML = '';
 
-    // HANDSHAKE: Explicitly request permission
-    try {
-        await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-    } catch (e) {
-        alert("Camera access denied. Check your browser settings and ensure you are on HTTPS.");
-        return;
-    }
+  await loadQuagga();
 
-    Quagga.init({
-        inputStream: {
-            name: "Live",
-            type: "LiveStream",
-            target: container,
-            constraints: { 
-                facingMode: "environment",
-                width: { ideal: 1280 },
-                height: { ideal: 720 }
-            }
-        },
-        decoder: { readers: ["ean_reader"] },
-        locate: true
-    }, (err) => {
-        if (err) {
-            console.error("Quagga Init Error:", err);
-            return;
-        }
-        Quagga.start();
-        
-        // Fix for Safari/iPhone to prevent full-screen takeover
-        const video = container.querySelector('video');
-        if (video) {
-            video.setAttribute("playsinline", "true"); 
-            video.play();
-        }
-    });
+  try {
+    mediaStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+  } catch {
+    alert("Camera permission denied.");
+    scannerActive = false;
+    return;
+  }
 
-    Quagga.onDetected(handleDetection);
+  Quagga.init({
+    inputStream: { type: "LiveStream", target: box, constraints: { facingMode: "environment" }},
+    decoder: { readers: ["ean_reader"] },
+    locate: true
+  }, err => {
+    if (err) return console.error(err);
+    Quagga.start();
+    const v = box.querySelector("video");
+    if (v) { v.setAttribute("playsinline", "true"); v.play(); }
+  });
+
+  if (Quagga.offDetected) Quagga.offDetected(onDetected);
+  Quagga.onDetected(onDetected);
 }
 
-// 4. DETECTION HANDLER
-async function handleDetection(data) {
-    if (!isScanning) return;
-    isScanning = false;
-    Quagga.stop();
-
-    if (navigator.vibrate) navigator.vibrate(100);
-    
-    const isbn = data.codeResult.code;
-    await handleScannedBook(isbn);
+function stopScanner() {
+  scannerActive = false;
+  detectionLocked = false;
+  try { if (window.Quagga) Quagga.stop(); } catch {}
+  if (mediaStream) { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null; }
+  document.getElementById('interactive').innerHTML = '';
 }
 
-// 5. DATA PROCESSING
-async function handleScannedBook(isbn) {
-    showStatus("Searching...", "#6c5ce7");
-    try {
-        const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`);
-        const data = await res.json();
-        
-        let info = { title: "Unknown", authors: ["Unknown"] };
-        if (data.items && data.items.length > 0) info = data.items[0].volumeInfo;
-
-        const hasRead = await askReadStatus(info.title);
-
-        // Fix Mixed Content warning for images
-        let imgUrl = info.imageLinks ? info.imageLinks.thumbnail : "https://via.placeholder.com/50x75?text=No+Cover";
-        imgUrl = imgUrl.replace("http://", "https://");
-
-        const newBook = {
-            id: Date.now().toString(36),
-            isbn: isbn,
-            title: info.title,
-            author: info.authors ? info.authors.join(', ') : "Unknown",
-            image: imgUrl,
-            isRead: hasRead
-        };
-
-        myLibrary.push(newBook);
-        saveLibrary();
-        renderLibrary();
-        cloudSync('add', newBook);
-        showView('view-library');
-    } catch (err) {
-        showStatus("Book not found", "#dc3545");
-        showView('view-home');
-    }
+async function onDetected(data) {
+  if (detectionLocked) return;
+  detectionLocked = true;
+  stopScanner();
+  if (navigator.vibrate) navigator.vibrate(100);
+  handleISBN(data.codeResult.code);
 }
 
-// 6. CLOUD & UTILS
+/* ===================== BOOK FLOW ===================== */
+async function handleISBN(isbn) {
+  showToast("Searching...", "#6c5ce7");
+
+  try {
+    const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`);
+    const json = await res.json();
+    const info = json.items?.[0]?.volumeInfo || {};
+
+    const title = info.title || "Unknown";
+    const author = info.authors?.join(", ") || "Unknown";
+    let image = info.imageLinks?.thumbnail || "https://via.placeholder.com/50x75?text=No+Cover";
+    image = image.replace("http://", "https://");
+
+    const isRead = await askReadStatus(title);
+
+    const book = { isbn, title, author, image, isRead };
+    myLibrary = myLibrary.filter(b => b.isbn !== isbn);
+    myLibrary.push(book);
+
+    saveLibrary();
+    renderLibrary();
+    cloudSync("add", book);
+    showView("view-library");
+  } catch {
+    showToast("Book not found", "#dc3545");
+    showView("view-home");
+  }
+}
+
+/* ===================== CLOUD ===================== */
 async function loadLibrary() {
-    showStatus("Syncing...", "#17a2b8");
-    try {
-        const response = await fetch(GOOGLE_SHEET_URL, { redirect: 'follow' });
-        const data = await response.json();
-        if (Array.isArray(data)) {
-            myLibrary = data.map(b => ({ ...b, id: Math.random().toString(36).substr(2, 9) }));
-            renderLibrary();
-            saveLibrary();
-            showStatus("Sync OK", "#28a745");
-        }
-    } catch (e) { showStatus("Offline Mode", "#6c757d"); }
+  showToast("Syncing...", "#17a2b8");
+  try {
+    const res = await fetch(GOOGLE_SHEET_URL);
+    const data = await res.json();
+    if (Array.isArray(data)) {
+      myLibrary = data;
+      saveLibrary();
+      renderLibrary();
+      showToast("Sync OK", "#28a745");
+    }
+  } catch { showToast("Offline Mode", "#6c757d"); }
 }
 
-async function cloudSync(action, book) {
-    fetch(GOOGLE_SHEET_URL, {
-        method: "POST",
-        mode: "no-cors",
-        redirect: 'follow',
-        body: JSON.stringify({ action: action, data: book })
-    });
+function cloudSync(action, book) {
+  fetch(GOOGLE_SHEET_URL, {
+    method: "POST",
+    body: JSON.stringify({ action, data: book })
+  });
 }
 
+/* ===================== UI ===================== */
 function askReadStatus(title) {
-    return new Promise((resolve) => {
-        const modal = document.getElementById('read-modal');
-        document.getElementById('modal-title').textContent = title;
-        modal.style.display = 'flex';
-        document.getElementById('btn-read-yes').onclick = () => { modal.style.display = 'none'; resolve(true); };
-        document.getElementById('btn-read-no').onclick = () => { modal.style.display = 'none'; resolve(false); };
-    });
+  return new Promise(res => {
+    const m = document.getElementById("read-modal");
+    document.getElementById("modal-title").textContent = title;
+    m.style.display = "flex";
+    document.getElementById("btn-read-yes").onclick = () => { m.style.display = "none"; res(true); };
+    document.getElementById("btn-read-no").onclick = () => { m.style.display = "none"; res(false); };
+  });
 }
 
 function renderLibrary() {
-    const list = document.getElementById('book-list');
-    list.innerHTML = myLibrary.map(b => `
-        <li class="book-item">
-            <img src="${b.image}">
-            <div class="book-info">
-                <strong>${b.title}</strong>
-                <span class="status-flag ${b.isRead?'read':'unread'}" onclick="toggleRead('${b.id}')">
-                    ${b.isRead?'✅ Read':'📖 Unread'}
-                </span>
-            </div>
-            <button class="delete-btn" onclick="deleteBook('${b.id}')">🗑️</button>
-        </li>
-    `).join('');
+  const list = document.getElementById("book-list");
+  list.innerHTML = "";
+  myLibrary.forEach(b => {
+    const li = document.createElement("li");
+    li.className = "book-item";
+
+    const img = document.createElement("img");
+    img.src = b.image;
+
+    const info = document.createElement("div");
+    info.className = "book-info";
+
+    const title = document.createElement("strong");
+    title.textContent = b.title;
+
+    const flag = document.createElement("span");
+    flag.className = `status-flag ${b.isRead ? "read" : "unread"}`;
+    flag.textContent = b.isRead ? "✅ Read" : "📖 Unread";
+    flag.onclick = () => toggleRead(b.isbn);
+
+    const del = document.createElement("button");
+    del.className = "delete-btn";
+    del.textContent = "🗑️";
+    del.onclick = () => deleteBook(b.isbn);
+
+    info.append(title, flag);
+    li.append(img, info, del);
+    list.appendChild(li);
+  });
 }
 
-function toggleRead(id) {
-    const b = myLibrary.find(x => x.id === id);
-    if(b) { b.isRead = !b.isRead; renderLibrary(); saveLibrary(); cloudSync('update', b); }
+function toggleRead(isbn) {
+  const b = myLibrary.find(x => x.isbn === isbn);
+  if (!b) return;
+  b.isRead = !b.isRead;
+  saveLibrary();
+  renderLibrary();
+  cloudSync("update", b);
 }
 
-function deleteBook(id) {
-    const b = myLibrary.find(x => x.id === id);
-    if(b && confirm("Delete?")) {
-        myLibrary = myLibrary.filter(x => x.id !== id);
-        renderLibrary();
-        saveLibrary();
-        cloudSync('delete', b);
-    }
+function deleteBook(isbn) {
+  if (!confirm("Delete?")) return;
+  myLibrary = myLibrary.filter(b => b.isbn !== isbn);
+  saveLibrary();
+  renderLibrary();
+  cloudSync("delete", { isbn });
 }
 
-function saveLibrary() { localStorage.setItem('myLibrary', JSON.stringify(myLibrary)); }
-
-function showStatus(m, c) {
-    const t = document.createElement("div"); t.className = "toast";
-    t.textContent = m; t.style.background = c;
-    document.body.appendChild(t);
-    setTimeout(() => t.remove(), 2500);
+/* ===================== UTIL ===================== */
+function saveLibrary() {
+  localStorage.setItem("myLibrary", JSON.stringify(myLibrary));
 }
 
-// Initial Load
+function showToast(msg, color) {
+  const t = document.createElement("div");
+  t.className = "toast";
+  t.textContent = msg;
+  t.style.background = color;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2500);
+}
+
+/* ===================== MANUAL ISBN ===================== */
+document.getElementById("manual-btn").onclick = () => {
+  const isbn = prompt("Enter ISBN:");
+  if (isbn) handleISBN(isbn.trim());
+};
+
+/* ===================== INIT ===================== */
 window.onload = () => {
-    const saved = localStorage.getItem('myLibrary');
-    if (saved) { myLibrary = JSON.parse(saved); renderLibrary(); }
-    showView('view-home');
+  const saved = localStorage.getItem("myLibrary");
+  if (saved) myLibrary = JSON.parse(saved);
+  renderLibrary();
+  showView("view-home");
 };
