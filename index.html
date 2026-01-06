@@ -3,27 +3,52 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Cloud Book Library</title>
+    <title>BookWorm Library</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-    <div class="app-container">
-        <h1>My Cloud Library</h1>
+    <div id="view-home" class="view">
+        <div class="welcome-card">
+            <h1>BookWorm 📚</h1>
+            <p style="color: #666; margin-bottom: 20px;">Manage your cloud collection</p>
+            
+            <button onclick="showView('view-scanner')" class="menu-btn primary">
+                ➕ Add a New Book
+            </button>
+            
+            <button onclick="showView('view-library')" class="menu-btn secondary">
+                📂 View Cloud Library
+            </button>
+        </div>
+    </div>
 
-        <div id="interactive" class="viewport"></div>
+    <div id="view-scanner" class="view" style="display:none;">
+        <button class="back-btn" onclick="showView('view-home')">← Back to Menu</button>
         
-        <div id="scanner-error"></div>
-
+        <div id="interactive" class="viewport">
+            </div>
+        
         <div class="controls">
-            <button id="add-book-btn" class="action-btn">Manual Add</button>
-            <button id="export-btn" class="action-btn">Export CSV</button>
+            <button id="add-book-btn" class="action-btn">Manual Entry</button>
+        </div>
+        
+        <p style="text-align: center; color: #666; font-size: 0.8rem; margin-top: 15px;">
+            Point camera at the ISBN barcode
+        </p>
+    </div>
+
+    <div id="view-library" class="view" style="display:none;">
+        <div class="header-row">
+            <button class="back-btn" onclick="showView('view-home')">← Back</button>
+            <h2 style="margin: 0;">My Collection</h2>
         </div>
 
-        <div class="stats-bar" style="text-align: center; margin-bottom: 15px; font-size: 0.9rem; color: #666;">
+        <div id="search-container" style="margin-bottom: 15px;">
             </div>
 
-        <ul id="book-list"></ul>
+        <ul id="book-list">
+            </ul>
     </div>
 
     <script src="script.js"></script>

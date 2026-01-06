@@ -1,36 +1,94 @@
 /* 1. Reset & Global Styles */
 * {
     box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
 }
 
 body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     margin: 0;
-    padding: 20px;
-    background-color: #f0f2f5;
-    color: #1a1a1a;
-    transition: background-color 0.3s ease;
-}
-
-h1 {
-    text-align: center;
-    font-size: 1.6rem;
-    margin-bottom: 20px;
+    padding: 0;
+    background-color: #f8f9fa;
     color: #333;
+    overflow-x: hidden;
 }
 
-/* 2. Quagga Scanner Window */
+/* 2. SPA View Transitions */
+.view {
+    padding: 20px;
+    min-height: 100vh;
+    width: 100%;
+    transition: opacity 0.3s ease-in-out;
+}
+
+/* Force hide views when display:none is set by JS */
+[style*="display:none"] {
+    display: none !important;
+}
+
+/* 3. Welcome Page (Home) */
+#view-home {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.welcome-card {
+    background: white;
+    padding: 40px 30px;
+    border-radius: 24px;
+    box-shadow: 0 15px 35px rgba(0,0,0,0.2);
+    text-align: center;
+    width: 100%;
+    max-width: 350px;
+}
+
+.welcome-card h1 {
+    margin-top: 0;
+    font-size: 2rem;
+    color: #2d3436;
+    margin-bottom: 10px;
+}
+
+.menu-btn {
+    display: block;
+    width: 100%;
+    padding: 18px;
+    margin: 15px 0;
+    font-size: 1rem;
+    font-weight: bold;
+    border: none;
+    border-radius: 15px;
+    cursor: pointer;
+    transition: transform 0.2s, background 0.2s;
+}
+
+.menu-btn:active {
+    transform: scale(0.96);
+}
+
+.menu-btn.primary {
+    background-color: #007bff;
+    color: white;
+}
+
+.menu-btn.secondary {
+    background-color: #f1f3f5;
+    color: #495057;
+}
+
+/* 4. Scanner View */
 #interactive.viewport {
     width: 100%;
-    max-width: 500px;
-    height: 300px;
-    margin: 0 auto 20px auto;
-    position: relative;
-    overflow: hidden;
-    border-radius: 15px;
+    height: 350px;
     background: #000;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+    border-radius: 20px;
+    overflow: hidden;
+    position: relative;
+    margin-bottom: 20px;
     border: 4px solid #fff;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.15);
 }
 
 #interactive.viewport > video, 
@@ -43,93 +101,51 @@ h1 {
     left: 0;
 }
 
-/* The Green Lines/Box from Quagga */
-canvas.drawingBuffer {
-    position: absolute;
-    top: 0;
-    left: 0;
-    pointer-events: none;
-}
-
-/* 3. Animations & Notifications */
-@keyframes success-flash {
-    0% { background-color: transparent; }
-    50% { background-color: rgba(40, 167, 69, 0.25); }
-    100% { background-color: transparent; }
-}
-
-.flash-active {
-    animation: success-flash 0.4s ease-out;
-}
-
-.toast {
-    position: fixed;
-    top: 20px;
-    left: 50%;
-    transform: translateX(-50%);
-    color: white;
-    padding: 12px 24px;
-    border-radius: 30px;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-    z-index: 9999;
-    font-weight: bold;
-    font-size: 0.9rem;
-    transition: opacity 0.5s;
-    text-align: center;
-    min-width: 200px;
-}
-
-/* 4. Controls & Buttons */
-.controls {
+/* 5. Header & Navigation */
+.header-row {
     display: flex;
-    justify-content: center;
-    gap: 12px;
+    align-items: center;
+    gap: 15px;
     margin-bottom: 25px;
-    max-width: 500px;
-    margin-left: auto;
-    margin-right: auto;
+    padding-bottom: 15px;
+    border-bottom: 1px solid #eee;
 }
 
-.action-btn {
-    flex: 1;
-    padding: 14px;
-    border: none;
+.back-btn {
+    background: #ffffff;
+    border: 1px solid #dfe6e9;
+    padding: 8px 15px;
     border-radius: 10px;
-    font-weight: bold;
     font-size: 0.9rem;
+    font-weight: 600;
+    color: #636e72;
     cursor: pointer;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
-#add-book-btn { background-color: #007bff; color: white; }
-#export-btn { background-color: #28a745; color: white; }
-
-/* 5. Book List Cards */
+/* 6. Library List & Cards */
 #book-list {
     list-style: none;
     padding: 0;
-    margin: 0 auto;
-    max-width: 600px;
+    margin: 0;
 }
 
 .book-item {
     display: flex;
-    align-items: center;
     background: white;
-    padding: 15px;
-    border-radius: 12px;
-    margin-bottom: 12px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-    border-left: 5px solid #007bff;
+    padding: 12px;
+    border-radius: 16px;
+    margin-bottom: 15px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+    align-items: center;
 }
 
 .book-item img {
-    width: 55px;
-    height: 80px;
+    width: 60px;
+    height: 85px;
+    border-radius: 8px;
     object-fit: cover;
-    border-radius: 6px;
     margin-right: 15px;
-    background-color: #f8f9fa;
+    background: #eee;
 }
 
 .book-info {
@@ -138,56 +154,89 @@ canvas.drawingBuffer {
 
 .book-info strong {
     display: block;
-    font-size: 1rem;
-    margin-bottom: 2px;
-    color: #222;
+    font-size: 0.95rem;
+    color: #2d3436;
 }
 
 .book-info em {
     display: block;
-    font-size: 0.85rem;
-    color: #666;
+    font-size: 0.8rem;
+    color: #636e72;
     font-style: normal;
-    margin-bottom: 6px;
 }
 
-/* 6. Badges (Categories & Ratings) */
+/* 7. Badges & Status Flags */
 .badges {
     display: flex;
-    gap: 6px;
+    gap: 8px;
+    margin-top: 8px;
+    align-items: center;
 }
 
 .badge-cat {
-    background: #e9ecef;
-    color: #495057;
+    background: #f1f3f5;
+    color: #666;
     font-size: 0.65rem;
-    padding: 3px 8px;
+    padding: 4px 8px;
     border-radius: 6px;
     text-transform: uppercase;
-    font-weight: 800;
+    font-weight: 700;
 }
 
-.badge-rate {
-    background: #fff3cd;
-    color: #856404;
-    font-size: 0.65rem;
-    padding: 3px 8px;
-    border-radius: 6px;
-    font-weight: 800;
+.status-flag {
+    font-size: 0.75rem;
+    padding: 4px 12px;
+    border-radius: 20px;
+    cursor: pointer;
+    font-weight: 700;
+    transition: all 0.2s ease;
+}
+
+.status-flag.read {
+    background-color: #e6fffa;
+    color: #2c7a7b;
+    border: 1px solid #81e6d9;
+}
+
+.status-flag.unread {
+    background-color: #fffaf0;
+    color: #9c4221;
+    border: 1px solid #fbd38d;
 }
 
 .delete-btn {
-    background: #fff0f0;
-    color: #dc3545;
-    border: 1px solid #f8d7da;
-    padding: 8px 12px;
-    border-radius: 8px;
-    font-size: 0.75rem;
+    background: none;
+    border: none;
+    font-size: 1.2rem;
+    padding: 10px;
     cursor: pointer;
-    margin-left: 10px;
+    opacity: 0.3;
 }
 
 .delete-btn:hover {
-    background: #dc3545;
+    opacity: 1;
+}
+
+/* 8. Notifications & Animations */
+.toast {
+    position: fixed;
+    top: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 12px 25px;
+    border-radius: 50px;
     color: white;
+    font-weight: bold;
+    z-index: 10000;
+    box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+}
+
+@keyframes success-flash {
+    0% { background-color: transparent; }
+    50% { background-color: rgba(46, 204, 113, 0.2); }
+    100% { background-color: transparent; }
+}
+
+.flash-active {
+    animation: success-flash 0.6s ease-out;
 }

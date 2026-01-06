@@ -1,8 +1,8 @@
 /**
- * 1. GLOBAL STATE & CONFIGURATION
+ * 1. CONFIGURATION & STATE
  */
+const GOOGLE_SHEET_URL = "https://script.google.com/macros/library/d/1CYciXGVi-7PmPiWoB2V8aFsbNa71JjK4aLTxSjH1789-A7BugjhSMahQ/2https://script.google.com/macros/s/AKfycbw1oZV1HEO21oadgp6IKkq9XR4v-2fwuinuKnAr_U1SyFYIrWqcNIpy6gux44pzgBAa_g/exec"; 
 const Quagga_CDN = "https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js";
-const GOOGLE_SHEET_URL = "https://script.google.com/macros/s/AKfycbw1oZV1HEO21oadgp6IKkq9XR4v-2fwuinuKnAr_U1SyFYIrWqcNIpy6gux44pzgBAa_g/exec"; // <--- Paste your URL here
 
 let myLibrary = [];
 let isScanning = true;
@@ -10,7 +10,49 @@ let lastResult = null;
 let count = 0;
 
 /**
- * 2. VALIDATION & CLOUD SYNC LOGIC
+ * 2. NAVIGATION (Single Page App Logic)
+ */
+function showView(viewId) {
+    // Hide all views
+    document.querySelectorAll('.view').forEach(v => v.style.display = 'none');
+    // Show selected view
+    document.getElementById(viewId).style.display = 'block';
+    
+    // Handle Scanner Lifecycle
+    if (viewId === 'view-scanner') {
+        isScanning = true;
+        startScanner();
+    } else {
+        if (window.Quagga) {
+            Quagga.stop();
+        }
+    }
+}
+
+/**
+ * 3. CLOUD SYNC ENGINE
+ * Sends Action (add/update/delete) + Data to Google Sheets
+ */
+async function cloudSync(action, book) {
+    if (!GOOGLE_SHEET_URL || GOOGLE_SHEET_URL.includes("PASTE_YOUR")) return;
+    try {
+        await fetch(GOOGLE_SHEET_URL, {
+            method: "POST",
+            mode: "no-cors",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                action: action,
+                data: book
+            })
+        });
+        console.log(`Cloud ${action}: Success`);
+    } catch (err) {
+        console.error(`Cloud ${action}: Failed`, err);
+    }
+}
+
+/**
+ * 4. SCANNER & VALIDATION
  */
 function isValidISBN13(isbn) {
     if (!/^97[89]\d{10}$/.test(isbn)) return false;
@@ -22,24 +64,6 @@ function isValidISBN13(isbn) {
     return checkDigit === parseInt(isbn[12]);
 }
 
-async function syncToGoogleSheets(book) {
-    if (GOOGLE_SHEET_URL.includes("PASTE_YOUR")) return; // Skip if URL not set
-    try {
-        await fetch(GOOGLE_SHEET_URL, {
-            method: "POST",
-            mode: "no-cors",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(book)
-        });
-        console.log("Cloud Sync: Success");
-    } catch (err) {
-        console.error("Cloud Sync: Failed", err);
-    }
-}
-
-/**
- * 3. SCANNER INITIALIZATION (Quagga2)
- */
 async function loadQuagga() {
     return new Promise((resolve, reject) => {
         if (window.Quagga) return resolve();
@@ -59,15 +83,10 @@ async function startScanner() {
                 name: "Live",
                 type: "LiveStream",
                 target: document.querySelector('#interactive'),
-                constraints: {
-                    facingMode: "environment",
-                    width: { ideal: 1280 },
-                    height: { ideal: 720 }
-                },
+                constraints: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
             },
             decoder: { readers: ["ean_reader"] },
             locate: true,
-            halfSample: true,
             patchSize: "medium"
         }, function (err) {
             if (err) return;
@@ -75,13 +94,10 @@ async function startScanner() {
         });
         Quagga.onDetected(onScanSuccess);
     } catch (e) {
-        showStatus("Scanner failed to load", "#dc3545");
+        showStatus("Scanner Error", "#dc3545");
     }
 }
 
-/**
- * 4. SUCCESS HANDLER
- */
 async function onScanSuccess(data) {
     if (!isScanning) return;
     const code = data.codeResult.code;
@@ -95,30 +111,27 @@ async function onScanSuccess(data) {
         count = 0;
     }
 
-    if (count >= 10) { 
+    if (count >= 12) { 
         isScanning = false; 
         document.body.classList.add('flash-active');
         if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
 
         await handleScannedBook(code);
-
-        setTimeout(() => {
-            isScanning = true;
-            document.body.classList.remove('flash-active');
-            lastResult = null;
-            count = 0;
-        }, 3000);
     }
 }
 
 /**
- * 5. DATA FETCHING & UI UPDATE
+ * 5. BOOK PROCESSING & DUPLICATE CHECK
  */
 async function handleScannedBook(isbn) {
+    // DUPLICATE CHECK
     if (myLibrary.some(b => b.isbn === isbn)) {
-        showStatus("Already in library!", "#ffc107");
+        alert("This book is already in your library!");
+        showView('view-home');
         return;
     }
+
+    showStatus("Fetching details...", "#007bff");
 
     try {
         const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`);
@@ -127,17 +140,22 @@ async function handleScannedBook(isbn) {
         let book;
         if (data.items && data.items.length > 0) {
             const info = data.items[0].volumeInfo;
+            
+            // ASK IF READ
+            const hasRead = confirm(`Found: ${info.title}\n\nHave you read this book?`);
+            
             book = {
                 id: Date.now().toString(36),
                 isbn: isbn,
                 title: info.title || "Unknown Title",
                 author: (info.authors && info.authors.join(', ')) || "Unknown Author",
-                image: (info.imageLinks && (info.imageLinks.thumbnail || info.imageLinks.smallThumbnail)) || "https://via.placeholder.com/50x75?text=No+Cover",
+                image: (info.imageLinks?.thumbnail) || "https://via.placeholder.com/50x75?text=No+Cover",
                 category: info.categories ? info.categories[0] : "General",
-                rating: info.averageRating || "N.A."
+                rating: info.averageRating || "N.A.",
+                isRead: hasRead
             };
-            showStatus(`Added: ${book.title}`, "#28a745");
         } else {
+            const hasRead = confirm(`Book details not found for ISBN ${isbn}.\n\nHave you read this?`);
             book = {
                 id: Date.now().toString(36),
                 isbn: isbn,
@@ -145,36 +163,56 @@ async function handleScannedBook(isbn) {
                 author: "Unknown Author",
                 image: "https://via.placeholder.com/50x75?text=No+Cover",
                 category: "Unknown",
-                rating: "N.A."
+                rating: "N.A.",
+                isRead: hasRead
             };
-            showStatus("Saved ISBN (Details not found)", "#17a2b8");
         }
 
         myLibrary.push(book);
         saveLibrary();
         renderLibrary();
-        syncToGoogleSheets(book); // Cloud Sync
+        cloudSync('add', book);
+        
+        showStatus("Successfully Saved!", "#28a745");
+        
+        // Return home after success
+        setTimeout(() => {
+            document.body.classList.remove('flash-active');
+            showView('view-home');
+        }, 1500);
 
     } catch (err) {
         showStatus("API Error", "#dc3545");
+        isScanning = true;
     }
 }
 
 /**
- * 6. UI HELPERS
+ * 6. LIBRARY ACTIONS (Update & Delete)
  */
-function showStatus(message, color) {
-    const statusEl = document.createElement("div");
-    statusEl.textContent = message;
-    statusEl.className = "toast";
-    statusEl.style.backgroundColor = color;
-    document.body.appendChild(statusEl);
-    setTimeout(() => {
-        statusEl.style.opacity = "0";
-        setTimeout(() => statusEl.remove(), 500);
-    }, 2500);
+function toggleRead(id) {
+    const book = myLibrary.find(b => b.id === id);
+    if(book) {
+        book.isRead = !book.isRead;
+        saveLibrary();
+        renderLibrary();
+        cloudSync('update', book);
+    }
 }
 
+function deleteBook(id) {
+    const bookToDelete = myLibrary.find(b => b.id === id);
+    if (bookToDelete && confirm(`Delete "${bookToDelete.title}"?`)) {
+        myLibrary = myLibrary.filter(b => b.id !== id);
+        saveLibrary();
+        renderLibrary();
+        cloudSync('delete', bookToDelete);
+    }
+}
+
+/**
+ * 7. UI RENDERING
+ */
 function renderLibrary() {
     const list = document.getElementById('book-list');
     if (!list) return;
@@ -190,24 +228,35 @@ function renderLibrary() {
                 <em>${book.author}</em>
                 <div class="badges">
                     <span class="badge-cat">${book.category}</span>
-                    <span class="badge-rate">⭐ ${book.rating}</span>
+                    <span class="status-flag ${book.isRead ? 'read' : 'unread'}" onclick="toggleRead('${book.id}')">
+                        ${book.isRead ? '✅ Read' : '📖 Unread'}
+                    </span>
                 </div>
             </div>
-            <button class="delete-btn" onclick="deleteBook('${book.id}')">Delete</button>
+            <button class="delete-btn" onclick="deleteBook('${book.id}')">🗑️</button>
         `;
         list.appendChild(li);
     });
 }
 
-/**
- * 7. PERSISTENCE & INIT
- */
-function deleteBook(id) {
-    myLibrary = myLibrary.filter(b => b.id !== id);
-    saveLibrary();
-    renderLibrary();
+function showStatus(message, color) {
+    const existing = document.querySelector('.toast');
+    if (existing) existing.remove();
+
+    const statusEl = document.createElement("div");
+    statusEl.textContent = message;
+    statusEl.className = "toast";
+    statusEl.style.backgroundColor = color;
+    document.body.appendChild(statusEl);
+    setTimeout(() => {
+        statusEl.style.opacity = "0";
+        setTimeout(() => statusEl.remove(), 500);
+    }, 2500);
 }
 
+/**
+ * 8. PERSISTENCE & INITIALIZATION
+ */
 function saveLibrary() { localStorage.setItem('myLibrary', JSON.stringify(myLibrary)); }
 function loadLibrary() {
     const raw = localStorage.getItem('myLibrary');
@@ -217,28 +266,14 @@ function loadLibrary() {
 document.addEventListener('DOMContentLoaded', () => {
     loadLibrary();
     renderLibrary();
-    startScanner();
+    showView('view-home'); // Start on welcome page
 
     // Manual Add Logic
     document.getElementById('add-book-btn').addEventListener('click', async () => {
         const isbn = prompt('Enter ISBN:');
-        if (isbn && isbn.length >= 10) {
+        if (isbn) {
             const clean = isbn.replace(/\D/g, '');
-            await handleScannedBook(clean);
+            if (clean.length >= 10) await handleScannedBook(clean);
         }
-    });
-
-    // CSV Export Logic
-    document.getElementById('export-btn').addEventListener('click', () => {
-        if (myLibrary.length === 0) return alert("Library is empty");
-        const headers = ["Title", "Author", "ISBN", "Category", "Rating"];
-        const rows = myLibrary.map(b => [`"${b.title}"`, `"${b.author}"`, `'${b.isbn}`, `"${b.category}"`, b.rating]);
-        const csv = [headers, ...rows].map(e => e.join(",")).join("\n");
-        const blob = new Blob([csv], { type: 'text/csv' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = "my_library.csv";
-        a.click();
     });
 });
