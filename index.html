@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>BookWorm Library</title>
+    <title>BookWorm Cloud</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -11,62 +11,39 @@
     <div id="view-home" class="view">
         <div class="welcome-card">
             <h1>BookWorm 📚</h1>
-            <p style="color: #666; margin-bottom: 20px;">Manage your cloud collection</p>
-            
-            <button onclick="showView('view-scanner')" class="menu-btn primary">
-                ➕ Add a New Book
-            </button>
-            
-            <button onclick="showView('view-library')" class="menu-btn secondary">
-                📂 View Cloud Library
-            </button>
+            <button onclick="showView('view-scanner')" class="menu-btn primary">➕ Add New Book</button>
+            <button onclick="showView('view-library')" class="menu-btn secondary">📂 View Library</button>
         </div>
     </div>
 
     <div id="view-scanner" class="view" style="display:none;">
-        <button class="back-btn" onclick="showView('view-home')">← Back to Menu</button>
-        
-        <div id="interactive" class="viewport">
-            </div>
-        
+        <button class="back-btn" onclick="showView('view-home')">← Back</button>
+        <div id="interactive" class="viewport"></div>
         <div class="controls">
-            <button id="add-book-btn" class="action-btn">Manual Entry</button>
+            <button id="manual-btn" class="menu-btn secondary">Manual ISBN Entry</button>
         </div>
-        
-        <p style="text-align: center; color: #666; font-size: 0.8rem; margin-top: 15px;">
-            Point camera at the ISBN barcode
-        </p>
     </div>
 
     <div id="view-library" class="view" style="display:none;">
         <div class="header-row">
             <button class="back-btn" onclick="showView('view-home')">← Back</button>
-            <h2 style="margin: 0;">My Collection</h2>
+            <h2 style="flex-grow: 1; margin:0 10px;">My Books</h2>
+            <button class="sync-btn" onclick="loadLibrary()">🔄 Sync</button>
         </div>
-
-        <div id="search-container" style="margin-bottom: 15px;">
-            </div>
-
-        <ul id="book-list">
-            </ul>
+        <ul id="book-list"></ul>
     </div>
 
     <div id="read-modal" class="modal-overlay" style="display:none;">
-    <div class="modal-card">
-        <h3 id="modal-title">Book Found!</h3>
-        <p>Have you read this book?</p>
-        <div class="modal-buttons">
-            <button id="btn-read-yes" class="modal-btn yes">✅ Yes, I've read it</button>
-            <button id="btn-read-no" class="modal-btn no">📖 Not yet</button>
+        <div class="modal-card">
+            <h3 id="modal-title">Book Found!</h3>
+            <p>Have you read this book?</p>
+            <div class="modal-buttons">
+                <button id="btn-read-yes" class="modal-btn yes">✅ Yes, I've read it</button>
+                <button id="btn-read-no" class="modal-btn no">📖 Not yet</button>
+            </div>
         </div>
-    </div>
     </div>
 
-    <div class="header-row">
-        <button class="back-btn" onclick="showView('view-home')">← Back</button>
-        <h2 style="margin: 0; flex-grow: 1;">My Collection</h2>
-        <button class="sync-btn" onclick="loadLibrary()">🔄 Sync</button>
-        </div>
     <script src="script.js"></script>
 </body>
 </html>
