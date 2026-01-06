@@ -124,7 +124,7 @@ async function onScanSuccess(data) {
  */
 async function handleScannedBook(isbn) {
     if (myLibrary.some(b => b.isbn === isbn)) {
-        alert("Already in library!");
+        showStatus("Already in library!", "#ffc107"); // Yellow for warning
         return;
     }
 
@@ -142,8 +142,13 @@ async function handleScannedBook(isbn) {
                 author: (info.authors && info.authors.join(', ')) || "Unknown Author",
                 image: (info.imageLinks && (info.imageLinks.thumbnail || info.imageLinks.smallThumbnail)) || "https://via.placeholder.com/50x75?text=No+Cover"
             };
+            
+            // Success Confirmation!
+            showStatus(`Added: ${book.title}`, "#28a745"); // Green for success
+            if (navigator.vibrate) navigator.vibrate([100, 50, 100]); // "Double-tap" vibration
+            
         } else {
-            // Fallback if details aren't in Google's DB
+            showStatus("Book details not found, but ISBN saved.", "#17a2b8"); // Blue for partial success
             book = {
                 id: Date.now().toString(36),
                 isbn: isbn,
@@ -157,7 +162,7 @@ async function handleScannedBook(isbn) {
         saveLibrary();
         renderLibrary();
     } catch (err) {
-        console.error("API Error:", err);
+        showStatus("Connection error!", "#dc3545"); // Red for error
     }
 }
 
@@ -236,3 +241,28 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 });
+
+function showStatus(message, color) {
+    const statusEl = document.createElement("div");
+    statusEl.textContent = message;
+    statusEl.style.position = "fixed";
+    statusEl.style.top = "20px";
+    statusEl.style.left = "50%";
+    statusEl.style.transform = "translateX(-50%)";
+    statusEl.style.backgroundColor = color;
+    statusEl.style.color = "white";
+    statusEl.style.padding = "12px 24px";
+    statusEl.style.borderRadius = "30px";
+    statusEl.style.boxShadow = "0 4px 12px rgba(0,0,0,0.2)";
+    statusEl.style.zIndex = "9999";
+    statusEl.style.fontWeight = "bold";
+    statusEl.style.transition = "opacity 0.5s";
+
+    document.body.appendChild(statusEl);
+
+    // Fade out and remove after 2.5 seconds
+    setTimeout(() => {
+        statusEl.style.opacity = "0";
+        setTimeout(() => statusEl.remove(), 500);
+    }, 2500);
+}
