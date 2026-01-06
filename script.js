@@ -90,9 +90,15 @@ async function handleISBN(isbn) {
     showToast("Searching...", "#6c5ce7");
 
   try {
-    const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`);
+    const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}&maxResults=1&key=AIzaSyDO-86ceZk1gvUlWjdxj3MAilXgRrCkdYw`);
+
     const json = await res.json();
-    const info = json.items?.[0]?.volumeInfo || {};
+
+    if (!json.items || !json.items.length) {
+    throw new Error("No book found");
+    }
+
+const info = json.items[0].volumeInfo;
 
     const title = info.title || "Unknown";
     const author = info.authors?.join(", ") || "Unknown";
