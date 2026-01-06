@@ -80,7 +80,8 @@ async function onDetected(data) {
 
 /* ===================== BOOK FLOW ===================== */
 async function handleISBN(isbn) {
-  showToast("Searching...", "#6c5ce7");
+    isbn = isbn.replace(/[^0-9X]/gi, "");   // ← ADD THIS LINE
+    showToast("Searching...", "#6c5ce7");
 
   try {
     const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`);
