@@ -102,15 +102,25 @@ function clearScannerError() {
 function startScanner() {
   if (!html5QrCode) html5QrCode = new Html5Qrcode("reader");
 
-  const qrboxFunction = (viewfinderWidth, viewfinderHeight) => {
-      let minEdgePercentage = 0.7; // Box will take up 70% of the screen
-      let minEdgeSize = Math.min(viewfinderWidth, viewfinderHeight);
-      let qrboxSize = Math.floor(minEdgeSize * minEdgePercentage);
-      return {
-          width: qrboxSize,
-          height: Math.floor(qrboxSize / 1.6) // Rectangular for ISBNs
-      };
-  };
+  // We are using a very simple setup to stop Safari from 'panicking'
+  html5QrCode.start(
+    { facingMode: { exact: "environment" } }, // 'exact' forces it to use back or fail (no flipping!)
+    {
+      fps: 10,
+      qrbox: { width: 280, height: 180 }
+    },
+    onScanSuccess
+  )
+  .then(() => {
+      console.log("Back camera locked.");
+      clearScannerError();
+  })
+  .catch(err => {
+      console.error("Back camera failed, trying standard mode", err);
+      // If 'exact' fails (some older phones), this is the only time it might flip
+      html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, onScanSuccess);
+  });
+}
 
   html5QrCode.start(
     { facingMode: "environment" }, 
