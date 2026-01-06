@@ -285,3 +285,18 @@ body {
 
 .modal-btn.yes { background: #2ecc71; color: white; }
 .modal-btn.no { background: #f1f3f5; color: #495057; }
+
+.sync-btn {
+    background: #e3f2fd;
+    border: 1px solid #bbdefb;
+    padding: 8px 12px;
+    border-radius: 10px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #1976d2;
+    cursor: pointer;
+}
+
+.sync-btn:active {
+    transform: rotate(20deg);
+}

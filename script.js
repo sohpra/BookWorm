@@ -25,34 +25,46 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 async function loadLibrary() {
-    // 1. Load local data just for a split-second "instant" feel
-    const localData = localStorage.getItem('myLibrary');
-    if (localData) {
-        myLibrary = JSON.parse(localData);
-        renderLibrary();
+    // 1. Initial UI feedback
+    showStatus("Refreshing Library...", "#17a2b8");
+    const list = document.getElementById('book-list');
+    
+    if (!GOOGLE_SHEET_URL || GOOGLE_SHEET_URL.includes("PASTE_YOUR")) {
+        showStatus("URL not set", "#dc3545");
+        return;
     }
 
-    // 2. Fetch the REAL data from Google Sheets
-    if (!GOOGLE_SHEET_URL || GOOGLE_SHEET_URL.includes("PASTE_YOUR")) return;
-    
     try {
+        // 2. Fetch the 'Source of Truth' from Google
         const response = await fetch(GOOGLE_SHEET_URL, { redirect: "follow" });
         const cloudData = await response.json();
         
-        // 3. OVERWRITE local memory with Cloud data to kill "ghosts"
         if (Array.isArray(cloudData)) {
-            myLibrary = cloudData; 
-            // Add unique IDs to cloud books so the UI can still track them
-            myLibrary = myLibrary.map(book => ({
+            // 3. THE GHOST KILLER: 
+            // We completely replace the local array with the cloud version.
+            myLibrary = cloudData.map(book => ({
                 ...book,
+                // Ensure every book has a temporary UI ID if the sheet doesn't have one
                 id: book.id || Math.random().toString(36).substr(2, 9)
             }));
+
+            // 4. Save this 'Clean' list to the phone
+            saveLibrary(); 
             
-            saveLibrary(); // Update phone storage with the clean list
-            renderLibrary(); // Re-draw the screen
+            // 5. Update the UI
+            renderLibrary();
+            showStatus("Sync Complete", "#28a745");
         }
     } catch (err) {
-        console.error("Cloud sync failed:", err);
+        console.error("Sync Error:", err);
+        showStatus("Sync Failed", "#dc3545");
+        
+        // Fallback to local storage if the cloud is unreachable
+        const local = localStorage.getItem('myLibrary');
+        if (local) {
+            myLibrary = JSON.parse(local);
+            renderLibrary();
+        }
     }
 }
 
