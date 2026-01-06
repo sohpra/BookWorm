@@ -259,47 +259,63 @@ async function handleISBN(raw) {
   showToast("Searching...", "#6c5ce7");
 
   try {
-    // 1) Google Books (when available)
-    let meta = null;
+    let title = null;
+    let author = null;
+    let image = null;
+
+    /* PRIMARY — OpenLibrary (fast, no key, reliable) */
     try {
-      meta = await lookupGoogleBooks(isbn);
+      const o = await fetch(`https://openlibrary.org/api/books?bibkeys=ISBN:${isbn}&format=json&jscmd=data`);
+      const oj = await o.json();
+      const b = oj[`ISBN:${isbn}`];
+
+      if (b) {
+        title = b.title;
+        author = b.authors?.map(a => a.name).join(", ");
+        image = b.cover?.medium || b.cover?.large;
+      }
     } catch {}
 
-    // 2) OpenLibrary fallback
-    if (!meta || !meta.title) {
-      meta = await lookupOpenLibrary(isbn);
+    /* OPTIONAL — Google Books fallback */
+    if (!title) {
+      try {
+        const g = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}&maxResults=1`);
+        const gj = await g.json();
+        const i = gj.items?.[0]?.volumeInfo;
+
+        if (i) {
+          title = i.title;
+          author = i.authors?.join(", ");
+          image = i.imageLinks?.thumbnail;
+        }
+      } catch {}
     }
 
-    if (!meta || !meta.title) {
-      throw new Error("Not found");
-    }
+    if (!title) throw new Error("Not found");
 
-    const title = meta.title || "Unknown";
-    const author = meta.author || "Unknown";
-
-    let image =
-      meta.image ||
-      `https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg` ||
-      "https://via.placeholder.com/50x75?text=No+Cover";
+    title ||= "Unknown";
+    author ||= "Unknown";
+    image ||= `https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg`;
     image = image.replace("http://", "https://");
 
     const isRead = await askReadStatus(title);
     const book = { isbn, title, author, image, isRead };
 
-    // Upsert by ISBN
-    myLibrary = myLibrary.filter((b) => b.isbn !== isbn);
+    myLibrary = myLibrary.filter(b => b.isbn !== isbn);
     myLibrary.push(book);
 
     saveLibrary();
     renderLibrary();
     cloudSync("add", book);
     showView("view-library");
+
   } catch (e) {
     console.error("Lookup failed:", e);
     showToast("Book not found", "#dc3545");
     showView("view-home");
   }
 }
+
 
 /* ===================== CLOUD ===================== */
 async function loadLibrary() {
