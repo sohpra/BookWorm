@@ -140,7 +140,7 @@ function startScanner() {
       // If high-res fails, start with basic settings
       html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, onScanSuccess);
   });
-}
+
 
 // 3. What happens when a book is found
 async function onScanSuccess(decodedText) {
