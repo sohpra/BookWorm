@@ -1,19 +1,25 @@
-/* 1. General Page Setup */
+/* 1. Reset & Global Styles */
+* {
+    box-sizing: border-box;
+}
+
 body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     margin: 0;
     padding: 20px;
     background-color: #f0f2f5;
-    color: #333;
+    color: #1a1a1a;
+    transition: background-color 0.3s ease;
 }
 
 h1 {
     text-align: center;
-    font-size: 1.5rem;
+    font-size: 1.6rem;
     margin-bottom: 20px;
+    color: #333;
 }
 
-/* 2. Quagga Scanner Styles */
+/* 2. Quagga Scanner Window */
 #interactive.viewport {
     width: 100%;
     max-width: 500px;
@@ -23,66 +29,82 @@ h1 {
     overflow: hidden;
     border-radius: 15px;
     background: #000;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.15);
-    border: 3px solid #fff;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+    border: 4px solid #fff;
 }
 
-/* The actual video feed */
 #interactive.viewport > video, 
 #interactive.viewport > canvas {
     width: 100%;
     height: 100%;
-    object-fit: cover; /* Prevents stretching */
+    object-fit: cover;
     position: absolute;
     top: 0;
     left: 0;
 }
 
-/* The 'Green Box' that appears when a barcode is found */
+/* The Green Lines/Box from Quagga */
 canvas.drawingBuffer {
     position: absolute;
     top: 0;
     left: 0;
-    pointer-events: none; /* Allows clicks to pass through */
+    pointer-events: none;
 }
 
-/* 3. Controls and Buttons */
+/* 3. Animations & Notifications */
+@keyframes success-flash {
+    0% { background-color: transparent; }
+    50% { background-color: rgba(40, 167, 69, 0.25); }
+    100% { background-color: transparent; }
+}
+
+.flash-active {
+    animation: success-flash 0.4s ease-out;
+}
+
+.toast {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: white;
+    padding: 12px 24px;
+    border-radius: 30px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    z-index: 9999;
+    font-weight: bold;
+    font-size: 0.9rem;
+    transition: opacity 0.5s;
+    text-align: center;
+    min-width: 200px;
+}
+
+/* 4. Controls & Buttons */
 .controls {
     display: flex;
     justify-content: center;
     gap: 12px;
     margin-bottom: 25px;
+    max-width: 500px;
+    margin-left: auto;
+    margin-right: auto;
 }
 
 .action-btn {
     flex: 1;
-    max-width: 150px;
-    padding: 12px;
+    padding: 14px;
     border: none;
-    border-radius: 8px;
-    font-weight: 600;
+    border-radius: 10px;
+    font-weight: bold;
     font-size: 0.9rem;
     cursor: pointer;
-    transition: transform 0.1s;
-}
-
-.action-btn:active {
-    transform: scale(0.95);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
 #add-book-btn { background-color: #007bff; color: white; }
 #export-btn { background-color: #28a745; color: white; }
 
-#scanner-error {
-    color: #dc3545;
-    text-align: center;
-    font-size: 0.85rem;
-    margin-top: -10px;
-    margin-bottom: 10px;
-    min-height: 1.2em;
-}
-
-/* 4. Book List & Cards */
+/* 5. Book List Cards */
 #book-list {
     list-style: none;
     padding: 0;
@@ -94,11 +116,78 @@ canvas.drawingBuffer {
     display: flex;
     align-items: center;
     background: white;
-    padding: 12px;
+    padding: 15px;
     border-radius: 12px;
     margin-bottom: 12px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    border-left: 5px solid #007bff;
 }
 
 .book-item img {
-    width: 6;}
+    width: 55px;
+    height: 80px;
+    object-fit: cover;
+    border-radius: 6px;
+    margin-right: 15px;
+    background-color: #f8f9fa;
+}
+
+.book-info {
+    flex-grow: 1;
+}
+
+.book-info strong {
+    display: block;
+    font-size: 1rem;
+    margin-bottom: 2px;
+    color: #222;
+}
+
+.book-info em {
+    display: block;
+    font-size: 0.85rem;
+    color: #666;
+    font-style: normal;
+    margin-bottom: 6px;
+}
+
+/* 6. Badges (Categories & Ratings) */
+.badges {
+    display: flex;
+    gap: 6px;
+}
+
+.badge-cat {
+    background: #e9ecef;
+    color: #495057;
+    font-size: 0.65rem;
+    padding: 3px 8px;
+    border-radius: 6px;
+    text-transform: uppercase;
+    font-weight: 800;
+}
+
+.badge-rate {
+    background: #fff3cd;
+    color: #856404;
+    font-size: 0.65rem;
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-weight: 800;
+}
+
+.delete-btn {
+    background: #fff0f0;
+    color: #dc3545;
+    border: 1px solid #f8d7da;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 0.75rem;
+    cursor: pointer;
+    margin-left: 10px;
+}
+
+.delete-btn:hover {
+    background: #dc3545;
+    color: white;
+}

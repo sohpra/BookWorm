@@ -3,123 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>BookWorm Scanner</title>
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            margin: 0;
-            padding: 20px;
-            background-color: #f8f9fa;
-        }
-
-        h1 { text-align: center; color: #333; }
-
-        /* Quagga Scanner Container */
-        #interactive.viewport {
-            width: 100%;
-            height: 300px;
-            position: relative;
-            overflow: hidden;
-            border-radius: 12px;
-            background: #000;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-            margin-bottom: 20px;
-        }
-
-        /* Quagga's internal video element */
-        #interactive.viewport > video, #interactive.viewport > canvas {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            position: absolute;
-            top: 0;
-            left: 0;
-        }
-
-        /* Quagga detection box (The Green Box) */
-        canvas.drawingBuffer {
-            position: absolute;
-            top: 0;
-            left: 0;
-        }
-
-        #scanner-error {
-            color: #d9534f;
-            text-align: center;
-            font-weight: bold;
-            margin: 10px 0;
-        }
-
-        /* Library List Styling */
-        #book-list {
-            list-style: none;
-            padding: 0;
-            margin-top: 30px;
-        }
-
-        .book-item {
-            display: flex;
-            align-items: center;
-            background: white;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 10px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-        }
-
-        .book-item img {
-            width: 50px;
-            height: 75px;
-            object-fit: cover;
-            margin-right: 15px;
-            border-radius: 4px;
-        }
-
-        .book-info { flex-grow: 1; }
-        .book-info strong { display: block; font-size: 1.1em; }
-        .book-info em { color: #666; }
-
-        button.delete-btn {
-            background: #ff4444;
-            color: white;
-            border: none;
-            padding: 8px 12px;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-
-        .controls {
-            display: flex;
-            justify-content: center;
-            gap: 10px;
-            margin-top: 10px;
-        }
-
-        button.action-btn {
-            padding: 12px 20px;
-            border: none;
-            border-radius: 6px;
-            background: #007bff;
-            color: white;
-            font-weight: bold;
-        }
-    </style>
+    <title>Cloud Book Library</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-    <h1>BookWorm Library</h1>
+    <div class="app-container">
+        <h1>My Cloud Library</h1>
 
-    <div id="interactive" class="viewport"></div>
-    <div id="scanner-error"></div>
+        <div id="interactive" class="viewport"></div>
+        
+        <div id="scanner-error"></div>
 
-    <div class="controls">
-        <button id="add-book-btn" class="action-btn">Manual Add</button>
-        <button id="export-btn" class="action-btn" style="background: #28a745;">Export CSV</button>
+        <div class="controls">
+            <button id="add-book-btn" class="action-btn">Manual Add</button>
+            <button id="export-btn" class="action-btn">Export CSV</button>
+        </div>
+
+        <div class="stats-bar" style="text-align: center; margin-bottom: 15px; font-size: 0.9rem; color: #666;">
+            </div>
+
+        <ul id="book-list"></ul>
     </div>
-
-    <ul id="book-list"></ul>
-
-    <pre id="diagnostics-output" style="display:none; font-size: 10px; background: #eee; padding: 10px;"></pre>
 
     <script src="script.js"></script>
 </body>
