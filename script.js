@@ -209,12 +209,21 @@ function toggleRead(id) {
 }
 
 function deleteBook(id) {
-    const book = myLibrary.find(b => b.id === id);
-    if (book && confirm(`Delete "${book.title}"?`)) {
+    // Find the specific book in the local array
+    const bookToDelete = myLibrary.find(b => b.id === id);
+    
+    if (bookToDelete && confirm(`Are you sure you want to delete "${bookToDelete.title}"?`)) {
+        // 1. Update the cloud (do this first or simultaneously)
+        cloudSync('delete', bookToDelete); 
+
+        // 2. Remove from local array
         myLibrary = myLibrary.filter(b => b.id !== id);
+        
+        // 3. Update local storage and UI
         saveLibrary();
         renderLibrary();
-        cloudSync('delete', book); // Delete from Sheets
+        
+        showStatus("Deleted from Cloud", "#dc3545");
     }
 }
 
