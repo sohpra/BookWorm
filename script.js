@@ -100,33 +100,36 @@ function clearScannerError() {
 
 // 2. The Scanner Start Function
 function startScanner() {
-  clearScannerError();
+  if (!html5QrCode) html5QrCode = new Html5Qrcode("reader");
 
-  if (!window.Html5Qrcode) {
-    const msg = 'html5-qrcode library not loaded';
-    console.error(msg);
-    showScannerError(msg);
-    return;
-  }
+  const qrboxFunction = (viewfinderWidth, viewfinderHeight) => {
+      let minEdgePercentage = 0.7; // Box will take up 70% of the screen
+      let minEdgeSize = Math.min(viewfinderWidth, viewfinderHeight);
+      let qrboxSize = Math.floor(minEdgeSize * minEdgePercentage);
+      return {
+          width: qrboxSize,
+          height: Math.floor(qrboxSize / 1.6) // Rectangular for ISBNs
+      };
+  };
 
-  if (!html5QrCode) html5QrCode = new Html5Qrcode('reader');
-
-  // We are defining the settings directly here to avoid "selfie" resets
   html5QrCode.start(
-    { facingMode: "environment" }, // 1. Force Back Camera
+    { facingMode: "environment" }, 
     {
-      fps: 20,                       // 2. Faster scanning
-      qrbox: { width: 280, height: 180 }, // 3. Slightly larger box for distance
-      aspectRatio: 1.777778          // 4. Widescreen helps some sensors focus
+      fps: 20,
+      qrbox: qrboxFunction, // This brings the box back dynamically
+      videoConstraints: {
+          width: { min: 640, ideal: 1280, max: 1920 },
+          height: { min: 480, ideal: 720, max: 1080 },
+          focusMode: "continuous"
+      }
     },
     onScanSuccess
   )
-    .then(() => clearScannerError())
-    .catch(err => {
-      console.error("Scanner won't start:", err);
-      // Fallback: If 'environment' fails, try starting without constraints
-      html5QrCode.start({ facingMode: "user" }, { fps: 10, qrbox: 250 }, onScanSuccess);
-    });
+  .catch(err => {
+      console.error("Scanner error:", err);
+      // If high-res fails, start with basic settings
+      html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, onScanSuccess);
+  });
 }
 
 // 3. What happens when a book is found
