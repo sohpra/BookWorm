@@ -49,19 +49,54 @@ async function cloudSync(action, book) {
 // 4. Scanner Logic
 async function startScanner() {
     isScanning = true;
+    
+    // 1. Ensure Quagga is loaded
     if (!window.Quagga) {
+        showStatus("Loading Scanner...", "#6c5ce7");
         const s = document.createElement("script");
         s.src = Quagga_CDN;
         await new Promise(r => s.onload = r);
         document.head.appendChild(s);
     }
+
+    // 2. Explicitly request camera access first (This forces the popup)
+    try {
+        await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+    } catch (err) {
+        alert("Camera access denied. Please enable it in your browser settings.");
+        showView('view-home');
+        return;
+    }
+
+    // 3. Initialize Quagga
     Quagga.init({
-        inputStream: { type: "LiveStream", target: "#interactive", constraints: { facingMode: "environment" } },
-        decoder: { readers: ["ean_reader"] }
-    }, (err) => { if(!err) Quagga.start(); });
+        inputStream: {
+            name: "Live",
+            type: "LiveStream",
+            target: document.querySelector('#interactive'),
+            constraints: {
+                facingMode: "environment",
+                aspectRatio: { min: 1, max: 2 }
+            },
+        },
+        decoder: { readers: ["ean_reader"] },
+        locate: true
+    }, (err) => {
+        if (err) {
+            console.error(err);
+            showStatus("Scanner Error", "#dc3545");
+            return;
+        }
+        Quagga.start();
+    });
+
     Quagga.onDetected(async (res) => {
         if (!isScanning) return;
         isScanning = false;
+        
+        // Haptic feedback (vibrate) if supported
+        if (navigator.vibrate) navigator.vibrate(100);
+        
         Quagga.stop();
         await handleScannedBook(res.codeResult.code);
     });
