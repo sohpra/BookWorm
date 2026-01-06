@@ -25,46 +25,34 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 async function loadLibrary() {
-    // 1. Initial UI feedback
-    showStatus("Refreshing Library...", "#17a2b8");
-    const list = document.getElementById('book-list');
+    showStatus("Connecting to Cloud...", "#17a2b8");
     
-    if (!GOOGLE_SHEET_URL || GOOGLE_SHEET_URL.includes("PASTE_YOUR")) {
-        showStatus("URL not set", "#dc3545");
-        return;
-    }
+    if (!GOOGLE_SHEET_URL || GOOGLE_SHEET_URL.includes("PASTE_YOUR")) return;
 
     try {
-        // 2. Fetch the 'Source of Truth' from Google
-        const response = await fetch(GOOGLE_SHEET_URL, { redirect: "follow" });
+        // 'cors' mode is required for doGet to work correctly
+        const response = await fetch(GOOGLE_SHEET_URL, { 
+            method: 'GET',
+            mode: 'cors', 
+            redirect: 'follow' 
+        });
+
+        if (!response.ok) throw new Error("Network response was not ok");
+        
         const cloudData = await response.json();
         
         if (Array.isArray(cloudData)) {
-            // 3. THE GHOST KILLER: 
-            // We completely replace the local array with the cloud version.
             myLibrary = cloudData.map(book => ({
                 ...book,
-                // Ensure every book has a temporary UI ID if the sheet doesn't have one
-                id: book.id || Math.random().toString(36).substr(2, 9)
+                id: Math.random().toString(36).substr(2, 9)
             }));
-
-            // 4. Save this 'Clean' list to the phone
-            saveLibrary(); 
-            
-            // 5. Update the UI
+            saveLibrary();
             renderLibrary();
             showStatus("Sync Complete", "#28a745");
         }
     } catch (err) {
         console.error("Sync Error:", err);
-        showStatus("Sync Failed", "#dc3545");
-        
-        // Fallback to local storage if the cloud is unreachable
-        const local = localStorage.getItem('myLibrary');
-        if (local) {
-            myLibrary = JSON.parse(local);
-            renderLibrary();
-        }
+        showStatus("Sync Failed - Check Console", "#dc3545");
     }
 }
 
