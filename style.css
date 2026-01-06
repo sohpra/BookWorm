@@ -30,9 +30,10 @@ body {
 
 /* ===================== HOME ===================== */
 #view-home {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  place-items: center;
+  min-height: 100dvh;   /* dynamic viewport height */
+  padding: 24px;
 }
 
 .welcome-card {
@@ -346,5 +347,47 @@ h1 {
 
   .stat-row {
     gap: 8px;
+  }
+}
+
+/* ===================== MOBILE LIBRARY FIX ===================== */
+@media (max-width: 700px) {
+
+  .header-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .book-item {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 18px;
+  }
+
+  .book-item img {
+    width: 140px;
+    height: auto;
+    margin: 12px 0;
+    border-radius: 12px;
+  }
+
+  .book-info {
+    width: 100%;
+  }
+
+  .book-info strong {
+    font-size: 1.1rem;
+  }
+
+  .status-flag {
+    margin: 12px 0;
+    display: inline-block;
+  }
+
+  .delete-btn {
+    margin-top: 10px;
+    font-size: 1.6rem;
   }
 }
