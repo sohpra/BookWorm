@@ -2,7 +2,7 @@
  * 1. GLOBAL STATE & CONFIGURATION
  */
 const Quagga_CDN = "https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js";
-const GOOGLE_SHEET_URL = "https://script.google.com/macros/s/AKfycby5hcRqdCu-XXSkKF0GTTf5E1AJz8JUuDrQZtYMLHtn6OkPwkfA84dSL_X3tQM-5-9ecg/exec"; // <--- Paste your URL here
+const GOOGLE_SHEET_URL = "https://script.google.com/macros/s/AKfycbw1oZV1HEO21oadgp6IKkq9XR4v-2fwuinuKnAr_U1SyFYIrWqcNIpy6gux44pzgBAa_g/exec"; // <--- Paste your URL here
 
 let myLibrary = [];
 let isScanning = true;
