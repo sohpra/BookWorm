@@ -37,9 +37,8 @@ function showView(viewId) {
 async function startScanner() {
     isScanning = true;
     const container = document.querySelector('#interactive');
-    container.innerHTML = ''; // Clear any old video elements
+    container.innerHTML = ''; 
 
-    // Load Quagga if missing
     if (!window.Quagga) {
         const s = document.createElement("script");
         s.src = Quagga_CDN;
@@ -47,11 +46,11 @@ async function startScanner() {
         document.head.appendChild(s);
     }
 
-    // Force Camera Permission Request
     try {
+        // Requesting camera - this triggers the prompt
         await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
     } catch (e) {
-        alert("Camera access is required to scan barcodes. Please enable it in your browser settings.");
+        alert("Camera blocked. Please check your browser settings.");
         showView('view-home');
         return;
     }
@@ -63,23 +62,29 @@ async function startScanner() {
             target: container,
             constraints: { 
                 facingMode: "environment",
+                // This ensures the best resolution for barcodes
                 width: { ideal: 1280 },
                 height: { ideal: 720 }
             }
         },
-        decoder: { readers: ["ean_reader"] },
-        locate: true
+        decoder: { readers: ["ean_reader"] }
     }, (err) => {
-        if (err) {
-            console.error(err);
-            showStatus("Scanner Error", "#dc3545");
-            return;
-        }
+        if (err) return console.error(err);
         Quagga.start();
+        
+        // FIX: Manually force the video to play inline for iPhone/Safari
+        const video = container.querySelector('video');
+        if (video) {
+            video.setAttribute("playsinline", "true"); 
+            video.setAttribute("muted", "true");
+            video.play();
+        }
     });
 
     Quagga.onDetected(handleDetection);
 }
+
+
 
 async function handleDetection(data) {
     if (!isScanning) return;
@@ -96,32 +101,26 @@ async function handleDetection(data) {
  * 4. BOOK PROCESSING
  */
 async function handleScannedBook(isbn) {
-    // Duplicate Check
-    if (myLibrary.some(b => b.isbn.toString() === isbn.toString())) {
-        alert("Book already in library!");
-        showView('view-library');
-        return;
-    }
-
     showStatus("Fetching details...", "#6c5ce7");
-
     try {
         const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`);
         const data = await res.json();
         
-        let info = { title: "Unknown Book", authors: ["Unknown Author"] };
-        if (data.items && data.items.length > 0) {
-            info = data.items[0].volumeInfo;
-        }
+        let info = { title: "Unknown", authors: ["Unknown"] };
+        if (data.items && data.items.length > 0) info = data.items[0].volumeInfo;
 
         const hasRead = await askReadStatus(info.title);
+
+        // FIX: Solve the "Mixed Content" warning by forcing the image to HTTPS
+        let imgUrl = info.imageLinks ? info.imageLinks.thumbnail : "https://via.placeholder.com/50x75?text=No+Cover";
+        imgUrl = imgUrl.replace("http://", "https://");
 
         const newBook = {
             id: Date.now().toString(36),
             isbn: isbn,
             title: info.title,
             author: info.authors ? info.authors.join(', ') : "Unknown",
-            image: info.imageLinks ? info.imageLinks.thumbnail : "https://via.placeholder.com/50x75?text=No+Cover",
+            image: imgUrl,
             isRead: hasRead
         };
 
@@ -131,9 +130,8 @@ async function handleScannedBook(isbn) {
         cloudSync('add', newBook);
         
         showView('view-library');
-        showStatus("Saved!", "#28a745");
     } catch (err) {
-        showStatus("Error finding book", "#dc3545");
+        showStatus("Error", "#dc3545");
         showView('view-home');
     }
 }
