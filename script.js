@@ -1,185 +1,149 @@
-// 1. Global State
-let html5QrCode = null;
+// 1. Configuration & State
+const Quagga_CDN = "https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js";
+let myLibrary = [];
 let isScanning = true;
-const myLibrary = [];
 
-const HTML5_QR_CODE_CDN = 'https://unpkg.com/html5-qrcode@2.3.8/dist/html5-qrcode.min.js';
-
-// 2. Library Loader
-function ensureHtml5QrcodeLoaded() {
-  return new Promise((resolve, reject) => {
-    if (window.Html5Qrcode) return resolve(true);
-    const s = document.createElement('script');
-    s.src = HTML5_QR_CODE_CDN;
-    s.onload = () => resolve(true);
-    s.onerror = () => reject(new Error("Could not load scanner library. Check internet."));
-    document.head.appendChild(s);
-  });
+// 2. Load the Library
+function loadQuagga() {
+    return new Promise((resolve, reject) => {
+        if (window.Quagga) return resolve();
+        const script = document.createElement("script");
+        script.src = Quagga_CDN;
+        script.onload = resolve;
+        script.onerror = reject;
+        document.head.appendChild(script);
+    });
 }
 
-// 3. The Scanner Start Function
+// 3. Initialize Quagga
 async function startScanner() {
-  try {
-    if (!html5QrCode) {
-      // Focus specifically on EAN_13 (ISBN barcodes) for better speed
-      html5QrCode = new Html5Qrcode("reader", { 
-        formatsToSupport: [ Html5QrcodeSupportedFormats.EAN_13 ] 
-      });
+    try {
+        await loadQuagga();
+        
+        Quagga.init({
+            inputStream: {
+                name: "Live",
+                type: "LiveStream",
+                target: document.querySelector('#interactive'),
+                constraints: {
+                    facingMode: "environment",
+                    aspectRatio: { min: 1, max: 2 }
+                },
+            },
+            decoder: {
+                readers: ["ean_reader"] // ISBNs use EAN-13 format
+            },
+            locate: true, // This tells Quagga to search for the barcode in the image
+            halfSample: true, // Improves performance on mobile
+            patchSize: "medium" // Size of the search area
+        }, function (err) {
+            if (err) {
+                console.error(err);
+                document.getElementById('scanner-error').textContent = "Camera Error: " + err;
+                return;
+            }
+            console.log("Quagga initialized.");
+            Quagga.start();
+        });
+
+        // Listen for successful scans
+        Quagga.onDetected(onScanSuccess);
+
+    } catch (e) {
+        document.getElementById('scanner-error').textContent = "Failed to load scanner library.";
     }
+}
 
-    const config = {
-      fps: 20,
-      qrbox: { width: 300, height: 180 }, // Rectangular for ISBN
-      aspectRatio: 1.777778
-    };
-
-    await html5QrCode.start(
-      { facingMode: "environment" }, 
-      config,
-      onScanSuccess
-    );
+// 4. Handle Scan Success
+async function onScanSuccess(data) {
+    if (!isScanning) return;
     
-    console.log("Back camera active and optimized for ISBN.");
-    document.getElementById('scanner-error').textContent = "";
-  } catch (err) {
-    console.error("Scanner failed:", err);
-    document.getElementById('scanner-error').textContent = "Camera error: Please ensure you allowed permissions.";
-  }
+    const code = data.codeResult.code;
+    
+    // Quagga can be sensitive; verify it's a 13-digit ISBN
+    if (code.length === 13) {
+        isScanning = false;
+        console.log("ISBN detected: " + code);
+        
+        // Visual feedback
+        const viewport = document.querySelector('#interactive');
+        viewport.style.border = "5px solid #28a745";
+        
+        await handleScannedBook(code);
+
+        // Reset scanner after 3 seconds
+        setTimeout(() => {
+            isScanning = true;
+            viewport.style.border = "none";
+        }, 3000);
+    }
 }
 
-// 4. Handle Success
-async function onScanSuccess(decodedText) {
-  if (!isScanning) return;
-  isScanning = false; 
-
-  // Feedback: Vibrate phone if supported
-  if (navigator.vibrate) navigator.vibrate(100);
-
-  console.log('Detected:', decodedText);
-  await handleScannedBook(decodedText);
-
-  // Pause for 3 seconds so it doesn't scan the same book twice
-  setTimeout(() => { isScanning = true; }, 3000);
-}
-
-// 5. API Fetch and Library Logic
+// 5. Book Logic (Google Books API)
 async function handleScannedBook(isbn) {
-  const cleanIsbn = String(isbn).replace(/[^0-9Xx]/g, '');
-  
-  // Check if book already exists
-  if (myLibrary.some(b => b.isbn === cleanIsbn)) {
-    alert("Book already in your library!");
-    return;
-  }
-
-  try {
-    const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${cleanIsbn}`);
-    const data = await res.json();
-    
-    if (!data.items) {
-      alert("Book details not found, but added to list as ISBN: " + cleanIsbn);
-      addBookToState({ isbn: cleanIsbn, title: "Unknown Title", author: "Unknown", image: "" });
-      return;
+    if (myLibrary.some(b => b.isbn === isbn)) {
+        console.log("Already in library");
+        return;
     }
 
-    const info = data.items[0].volumeInfo;
-    const book = {
-      id: Date.now().toString(36),
-      isbn: cleanIsbn,
-      title: info.title || 'Unknown Title',
-      author: (info.authors && info.authors.join(', ')) || 'Unknown Author',
-      image: (info.imageLinks && (info.imageLinks.thumbnail || info.imageLinks.smallThumbnail)) || '',
-      isRead: false,
-      rating: 0
-    };
+    try {
+        const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`);
+        const data = await res.json();
+        
+        if (!data.items) {
+            alert("Book not found for ISBN: " + isbn);
+            return;
+        }
 
-    addBookToState(book);
-  } catch (err) {
-    console.error('API error:', err);
-  }
+        const info = data.items[0].volumeInfo;
+        const book = {
+            id: Date.now().toString(36),
+            isbn: isbn,
+            title: info.title || "Unknown",
+            author: (info.authors && info.authors.join(', ')) || "Unknown",
+            image: (info.imageLinks && info.imageLinks.thumbnail) || ""
+        };
+
+        myLibrary.push(book);
+        saveLibrary();
+        renderLibrary();
+    } catch (err) {
+        console.error("API error", err);
+    }
 }
 
-function addBookToState(book) {
-  myLibrary.push(book);
-  saveLibrary();
-  renderLibrary();
-}
-
-// 6. UI Rendering
+// 6. UI & Storage Helpers
 function renderLibrary() {
-  const list = document.getElementById('book-list');
-  if (!list) return;
-  list.innerHTML = '';
-
-  myLibrary.forEach(book => {
-    const li = document.createElement('li');
-    li.className = 'book-item';
-    li.innerHTML = `
-      <img class="book-cover" src="${book.image || 'https://via.placeholder.com/50x75?text=No+Cover'}" alt="cover">
-      <div class="book-info">
-        <strong>${book.title}</strong><br>
-        <em>${book.author}</em>
-      </div>
-      <button onclick="deleteBook('${book.id}')" style="background:#ff4444; color:white; border:none; padding:5px; border-radius:4px;">Delete</button>
-    `;
-    list.appendChild(li);
-  });
+    const list = document.getElementById('book-list');
+    if (!list) return;
+    list.innerHTML = '';
+    myLibrary.forEach(book => {
+        const li = document.createElement('li');
+        li.className = 'book-item';
+        li.innerHTML = `
+            <img src="${book.image}" style="width:50px;">
+            <div><strong>${book.title}</strong><br>${book.author}</div>
+            <button onclick="deleteBook('${book.id}')">Delete</button>
+        `;
+        list.appendChild(li);
+    });
 }
 
 function deleteBook(id) {
-  const idx = myLibrary.findIndex(b => b.id === id);
-  if (idx !== -1) {
-    myLibrary.splice(idx, 1);
+    myLibrary = myLibrary.filter(b => b.id !== id);
     saveLibrary();
     renderLibrary();
-  }
 }
 
 function saveLibrary() { localStorage.setItem('myLibrary', JSON.stringify(myLibrary)); }
 function loadLibrary() {
-  const raw = localStorage.getItem('myLibrary');
-  if (raw) {
-    const data = JSON.parse(raw);
-    myLibrary.length = 0;
-    myLibrary.push(...data);
-  }
+    const raw = localStorage.getItem('myLibrary');
+    if (raw) myLibrary = JSON.parse(raw);
 }
 
-// 7. Initialization
-document.addEventListener('DOMContentLoaded', async () => {
-  loadLibrary();
-  renderLibrary();
-  
-  try {
-    await ensureHtml5QrcodeLoaded();
+// 7. Start on Page Load
+document.addEventListener('DOMContentLoaded', () => {
+    loadLibrary();
+    renderLibrary();
     startScanner();
-  } catch (err) {
-    document.getElementById('scanner-error').textContent = err.message;
-  }
-
-  // Manual Add Logic
-  const addBtn = document.getElementById('add-book-btn');
-  if (addBtn) {
-    addBtn.addEventListener('click', async () => {
-      const isbn = prompt('Enter 13-digit ISBN:');
-      if (isbn) await handleScannedBook(isbn);
-    });
-  }
 });
-
-// 8. Export to CSV
-const exportBtn = document.getElementById('export-btn');
-if (exportBtn) {
-    exportBtn.addEventListener('click', () => {
-      if (myLibrary.length === 0) return alert("Library is empty");
-      const headers = ["Title", "Author", "ISBN"];
-      const rows = myLibrary.map(b => [`"${b.title}"`, `"${b.author}"`, `'${b.isbn}`]);
-      const csv = [headers, ...rows].map(e => e.join(",")).join("\n");
-      const blob = new Blob([csv], { type: 'text/csv' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "my_library.csv";
-      a.click();
-    });
-}
