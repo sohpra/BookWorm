@@ -6,14 +6,30 @@ let isScanning = false;
 
 // 1. NAVIGATION & PERMISSIONS
 function showView(viewId) {
-    document.querySelectorAll('.view').forEach(v => v.style.display = 'none');
-    document.getElementById(viewId).style.display = 'block';
-    
+    // 1. Hide everything first
+    document.querySelectorAll('.view').forEach(v => {
+        v.style.display = 'none';
+    });
+
+    // 2. Show the requested view
+    const targetView = document.getElementById(viewId);
+    if (targetView) {
+        targetView.style.display = 'block';
+    }
+
+    // 3. TRIGGER SCANNER ONLY AFTER DISPLAY IS BLOCK
     if (viewId === 'view-scanner') {
-        // Wait for DOM to render, then trigger camera
-        setTimeout(() => { startScanner(); }, 300);
+        // We give the browser 200ms to physically render the div 
+        // before we ask the camera to point at it.
+        setTimeout(() => {
+            startScanner();
+        }, 200);
     } else {
-        if (window.Quagga) Quagga.stop();
+        if (window.Quagga) {
+            Quagga.stop();
+            const container = document.querySelector('#interactive');
+            if (container) container.innerHTML = ''; // Clean up video
+        }
         isScanning = false;
     }
 }
