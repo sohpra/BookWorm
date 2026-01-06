@@ -3,15 +3,7 @@ let html5QrCode = null;
 let isScanning = true;
 
 //const config = { fps: 5, qrbox: { width: 250, height: 250 } };
-const config = { 
-    fps: 10, 
-    qrbox: { width: 250, height: 150 },
-    // Add this part to help with focus:
-    videoConstraints: {
-        focusMode: "continuous",
-        advanced: [{ zoom: 2.0 }] // This zooms in slightly
-    }
-};
+
 const HTML5_QR_CODE_CDN = 'https://unpkg.com/html5-qrcode@2.3.8/dist/html5-qrcode.min.js';
 const HTML5_QR_CODE_CDN_FALLBACK = 'https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/dist/html5-qrcode.min.js';
 // 1a. Ensure html5-qrcode library is loaded
@@ -119,9 +111,22 @@ function startScanner() {
 
   if (!html5QrCode) html5QrCode = new Html5Qrcode('reader');
 
-  html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
+  // We are defining the settings directly here to avoid "selfie" resets
+  html5QrCode.start(
+    { facingMode: "environment" }, // 1. Force Back Camera
+    {
+      fps: 20,                       // 2. Faster scanning
+      qrbox: { width: 280, height: 180 }, // 3. Slightly larger box for distance
+      aspectRatio: 1.777778          // 4. Widescreen helps some sensors focus
+    },
+    onScanSuccess
+  )
     .then(() => clearScannerError())
-    .catch(err => console.error("Scanner won't start:", err));
+    .catch(err => {
+      console.error("Scanner won't start:", err);
+      // Fallback: If 'environment' fails, try starting without constraints
+      html5QrCode.start({ facingMode: "user" }, { fps: 10, qrbox: 250 }, onScanSuccess);
+    });
 }
 
 // 3. What happens when a book is found
