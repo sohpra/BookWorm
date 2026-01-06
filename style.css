@@ -1,44 +1,104 @@
-
-
-body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; margin: 16px; }
-header h1 { margin: 0 0 12px 0; }
-.scanner { margin-bottom: 12px; }
-#reader { border: 1px solid #ccc; border-radius: 6px; overflow: hidden; }
-.controls { margin: 12px 0; }
-#add-book-btn { padding: 8px 12px; font-size: 16px; }
-#books { margin-top: 16px; }
-#book-list { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
-.book-item { display: flex; flex-direction: column; gap: 8px; padding: 8px; border: 1px solid #eee; border-radius: 6px; align-items: stretch; }
-.book-cover { width: 100%; height: 200px; object-fit: cover; background: #f4f4f4; border-radius: 4px; }
-.book-info { padding: 6px 0; }
-.book-controls { display:flex; gap:8px; align-items:center; justify-content:space-between; }
-.book-controls label { display:flex; align-items:center; gap:6px; }
-.book-controls select { min-width: 90px; }
-.book-controls button { padding: 6px 8px; background:#e53935; color:#fff; border:none; border-radius:4px; cursor:pointer; }
-.book-controls button:hover { opacity:0.9; }
-.scanner-error { color: #b00020; margin-top: 8px; font-size: 14px; display: none; }
-/* Fix the double dot error and add hover */
-.retry-camera { 
-  margin-top: 8px; 
-  padding: 6px 10px; 
-  background: #0078d4; 
-  color: #fff; 
-  border: none; 
-  border-radius: 4px; 
-  cursor: pointer; 
-  display: none; 
+/* 1. General Page Setup */
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    margin: 0;
+    padding: 20px;
+    background-color: #f0f2f5;
+    color: #333;
 }
 
-.retry-camera:hover { background: #005fa3; }
-
-/* --- NEW STYLES FOR STARS AND BADGES --- */
-
-/* Star Rating Styling */
-.star-rating {
-  display: flex;
-  gap: 2px;
+h1 {
+    text-align: center;
+    font-size: 1.5rem;
+    margin-bottom: 20px;
 }
 
-.star {
-  cursor: pointer;
-  font-size: 1.2rem;}
+/* 2. Quagga Scanner Styles */
+#interactive.viewport {
+    width: 100%;
+    max-width: 500px;
+    height: 300px;
+    margin: 0 auto 20px auto;
+    position: relative;
+    overflow: hidden;
+    border-radius: 15px;
+    background: #000;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+    border: 3px solid #fff;
+}
+
+/* The actual video feed */
+#interactive.viewport > video, 
+#interactive.viewport > canvas {
+    width: 100%;
+    height: 100%;
+    object-fit: cover; /* Prevents stretching */
+    position: absolute;
+    top: 0;
+    left: 0;
+}
+
+/* The 'Green Box' that appears when a barcode is found */
+canvas.drawingBuffer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    pointer-events: none; /* Allows clicks to pass through */
+}
+
+/* 3. Controls and Buttons */
+.controls {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin-bottom: 25px;
+}
+
+.action-btn {
+    flex: 1;
+    max-width: 150px;
+    padding: 12px;
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: transform 0.1s;
+}
+
+.action-btn:active {
+    transform: scale(0.95);
+}
+
+#add-book-btn { background-color: #007bff; color: white; }
+#export-btn { background-color: #28a745; color: white; }
+
+#scanner-error {
+    color: #dc3545;
+    text-align: center;
+    font-size: 0.85rem;
+    margin-top: -10px;
+    margin-bottom: 10px;
+    min-height: 1.2em;
+}
+
+/* 4. Book List & Cards */
+#book-list {
+    list-style: none;
+    padding: 0;
+    margin: 0 auto;
+    max-width: 600px;
+}
+
+.book-item {
+    display: flex;
+    align-items: center;
+    background: white;
+    padding: 12px;
+    border-radius: 12px;
+    margin-bottom: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+
+.book-item img {
+    width: 6;}
