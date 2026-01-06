@@ -16,18 +16,13 @@
         </div>
     </div>
 
-    <div id="view-scanner" class="view">
-        <button class="back-btn" onclick="showView('view-home')">← Back</button>
-        <div id="interactive" class="viewport"></div>
-        <button onclick="startScanner()" style="width:100%; padding:10px; margin-top:10px; background:orange;">
-            Force Start Camera
-        </button>
-    </div>
-
     <div id="view-scanner" class="view" style="display:none;">
         <button class="back-btn" onclick="showView('view-home')">← Back</button>
+        
         <div id="interactive" class="viewport"></div>
+        
         <div class="controls">
+            <button onclick="startScanner()" class="menu-btn orange-debug">Force Start Camera</button>
             <button id="manual-btn" class="menu-btn secondary">Manual ISBN Entry</button>
         </div>
     </div>
@@ -46,8 +41,8 @@
             <h3 id="modal-title">Book Found!</h3>
             <p>Have you read this book?</p>
             <div class="modal-buttons">
-                <button id="btn-read-yes" class="modal-btn yes">✅ Yes, I've read it</button>
-                <button id="btn-read-no" class="modal-btn no">📖 Not yet</button>
+                <button id="btn-read-yes" class="modal-btn yes">✅ Yes</button>
+                <button id="btn-read-no" class="modal-btn no">📖 No</button>
             </div>
         </div>
     </div>

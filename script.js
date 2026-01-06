@@ -1,45 +1,41 @@
+// 1. CONFIGURATION
 const GOOGLE_SHEET_URL = "https://script.google.com/macros/s/AKfycbw1oZV1HEO21oadgp6IKkq9XR4v-2fwuinuKnAr_U1SyFYIrWqcNIpy6gux44pzgBAa_g/exec"; 
 const Quagga_CDN = "https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js";
 
 let myLibrary = [];
 let isScanning = false;
 
-// 1. NAVIGATION & PERMISSIONS
+// 2. NAVIGATION (The "Visibility First" Logic)
 function showView(viewId) {
-    // 1. Hide everything first
-    document.querySelectorAll('.view').forEach(v => {
-        v.style.display = 'none';
-    });
+    // Hide all views
+    document.querySelectorAll('.view').forEach(v => v.style.display = 'none');
+    
+    // Show selected view
+    const target = document.getElementById(viewId);
+    if (target) target.style.display = 'block';
 
-    // 2. Show the requested view
-    const targetView = document.getElementById(viewId);
-    if (targetView) {
-        targetView.style.display = 'block';
-    }
-
-    // 3. TRIGGER SCANNER ONLY AFTER DISPLAY IS BLOCK
     if (viewId === 'view-scanner') {
-        // We give the browser 200ms to physically render the div 
-        // before we ask the camera to point at it.
-        setTimeout(() => {
-            startScanner();
-        }, 200);
+        // ESSENTIAL: Wait for the browser to "paint" the div before starting camera
+        setTimeout(() => { 
+            startScanner(); 
+        }, 300);
     } else {
         if (window.Quagga) {
             Quagga.stop();
-            const container = document.querySelector('#interactive');
-            if (container) container.innerHTML = ''; // Clean up video
+            // Clear the video element to release the camera hardware
+            document.getElementById('interactive').innerHTML = '';
         }
         isScanning = false;
     }
 }
 
-// 2. SCANNER LOGIC (With iPhone Fixes)
+// 3. SCANNER LOGIC
 async function startScanner() {
     isScanning = true;
-    const container = document.querySelector('#interactive');
-    container.innerHTML = ''; 
+    const container = document.getElementById('interactive');
+    container.innerHTML = ''; // Reset container
 
+    // Load library if not present
     if (!window.Quagga) {
         const s = document.createElement("script");
         s.src = Quagga_CDN;
@@ -47,12 +43,11 @@ async function startScanner() {
         document.head.appendChild(s);
     }
 
+    // HANDSHAKE: Explicitly request permission
     try {
-        // This line forces the browser to show the "Allow Camera" popup
         await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
     } catch (e) {
-        alert("Camera access denied. Please enable it in browser settings.");
-        showView('view-home');
+        alert("Camera access denied. Check your browser settings and ensure you are on HTTPS.");
         return;
     }
 
@@ -67,16 +62,19 @@ async function startScanner() {
                 height: { ideal: 720 }
             }
         },
-        decoder: { readers: ["ean_reader"] }
+        decoder: { readers: ["ean_reader"] },
+        locate: true
     }, (err) => {
-        if (err) return console.error(err);
+        if (err) {
+            console.error("Quagga Init Error:", err);
+            return;
+        }
         Quagga.start();
         
-        // IMPORTANT: Fix for Safari/iPhone to prevent video from going full-screen
+        // Fix for Safari/iPhone to prevent full-screen takeover
         const video = container.querySelector('video');
         if (video) {
             video.setAttribute("playsinline", "true"); 
-            video.setAttribute("muted", "true");
             video.play();
         }
     });
@@ -84,17 +82,21 @@ async function startScanner() {
     Quagga.onDetected(handleDetection);
 }
 
+// 4. DETECTION HANDLER
 async function handleDetection(data) {
     if (!isScanning) return;
     isScanning = false;
     Quagga.stop();
+
     if (navigator.vibrate) navigator.vibrate(100);
-    await handleScannedBook(data.codeResult.code);
+    
+    const isbn = data.codeResult.code;
+    await handleScannedBook(isbn);
 }
 
-// 3. BOOK PROCESSING (With HTTPS Image Fix)
+// 5. DATA PROCESSING
 async function handleScannedBook(isbn) {
-    showStatus("Fetching details...", "#6c5ce7");
+    showStatus("Searching...", "#6c5ce7");
     try {
         const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`);
         const data = await res.json();
@@ -104,7 +106,7 @@ async function handleScannedBook(isbn) {
 
         const hasRead = await askReadStatus(info.title);
 
-        // FIX: Mixed Content - Force Google Image URLs to use HTTPS
+        // Fix Mixed Content warning for images
         let imgUrl = info.imageLinks ? info.imageLinks.thumbnail : "https://via.placeholder.com/50x75?text=No+Cover";
         imgUrl = imgUrl.replace("http://", "https://");
 
@@ -123,12 +125,26 @@ async function handleScannedBook(isbn) {
         cloudSync('add', newBook);
         showView('view-library');
     } catch (err) {
-        showStatus("Error finding book", "#dc3545");
+        showStatus("Book not found", "#dc3545");
         showView('view-home');
     }
 }
 
-// 4. CLOUD & UTILS (Keep your existing cloudSync, loadLibrary, etc. here)
+// 6. CLOUD & UTILS
+async function loadLibrary() {
+    showStatus("Syncing...", "#17a2b8");
+    try {
+        const response = await fetch(GOOGLE_SHEET_URL, { redirect: 'follow' });
+        const data = await response.json();
+        if (Array.isArray(data)) {
+            myLibrary = data.map(b => ({ ...b, id: Math.random().toString(36).substr(2, 9) }));
+            renderLibrary();
+            saveLibrary();
+            showStatus("Sync OK", "#28a745");
+        }
+    } catch (e) { showStatus("Offline Mode", "#6c757d"); }
+}
+
 async function cloudSync(action, book) {
     fetch(GOOGLE_SHEET_URL, {
         method: "POST",
@@ -164,16 +180,31 @@ function renderLibrary() {
     `).join('');
 }
 
-function saveLibrary() { localStorage.setItem('myLibrary', JSON.stringify(myLibrary)); }
-
-function showStatus(msg, color) {
-    const t = document.createElement("div"); t.className = "toast";
-    t.textContent = msg; t.style.background = color;
-    document.body.appendChild(t);
-    setTimeout(() => t.remove(), 2000);
+function toggleRead(id) {
+    const b = myLibrary.find(x => x.id === id);
+    if(b) { b.isRead = !b.isRead; renderLibrary(); saveLibrary(); cloudSync('update', b); }
 }
 
-// Load on start
+function deleteBook(id) {
+    const b = myLibrary.find(x => x.id === id);
+    if(b && confirm("Delete?")) {
+        myLibrary = myLibrary.filter(x => x.id !== id);
+        renderLibrary();
+        saveLibrary();
+        cloudSync('delete', b);
+    }
+}
+
+function saveLibrary() { localStorage.setItem('myLibrary', JSON.stringify(myLibrary)); }
+
+function showStatus(m, c) {
+    const t = document.createElement("div"); t.className = "toast";
+    t.textContent = m; t.style.background = c;
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 2500);
+}
+
+// Initial Load
 window.onload = () => {
     const saved = localStorage.getItem('myLibrary');
     if (saved) { myLibrary = JSON.parse(saved); renderLibrary(); }
