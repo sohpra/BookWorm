@@ -3,10 +3,14 @@
 const USERS = ["sohini", "som", "rehan"];
 
 const params = new URLSearchParams(location.search);
-let CURRENT_USER = params.get("user") || localStorage.getItem("bw_user");
-if (CURRENT_USER) CURRENT_USER = CURRENT_USER.toLowerCase();
+let CURRENT_USER = (params.get("user") || "").toLowerCase().trim();
+
+// HARD GUARANTEE A USER
+if (!USERS.includes(CURRENT_USER)) CURRENT_USER = localStorage.getItem("bw_user");
 if (!USERS.includes(CURRENT_USER)) CURRENT_USER = "sohini";
+
 localStorage.setItem("bw_user", CURRENT_USER);
+
 
 /* ENDPOINTS */
 const GOOGLE_SHEET_URL =
