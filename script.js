@@ -6,11 +6,10 @@ const params = new URLSearchParams(location.search);
 let CURRENT_USER = (params.get("user") || "").toLowerCase().trim();
 
 // HARD GUARANTEE A USER
-if (!USERS.includes(CURRENT_USER)) CURRENT_USER = localStorage.getItem("bw_user");
+if (!USERS.includes(CURRENT_USER)) CURRENT_USER = (localStorage.getItem("bw_user") || "").toLowerCase().trim();
 if (!USERS.includes(CURRENT_USER)) CURRENT_USER = "sohini";
 
 localStorage.setItem("bw_user", CURRENT_USER);
-
 
 /* ENDPOINTS */
 const GOOGLE_SHEET_URL =
@@ -27,10 +26,11 @@ let scannerActive = false;
 let detectionLocked = false;
 let mediaStream = null;
 
-// detection stability
 let lastCode = null;
 let sameCount = 0;
 let lastAcceptTs = 0;
+
+let librarySyncInFlight = false;
 
 /* ===================== HELPERS (READ BY USER) ===================== */
 function emptyReadBy() {
@@ -38,8 +38,11 @@ function emptyReadBy() {
 }
 
 function ensureReadBy(book) {
+  if (!book || typeof book !== "object") return emptyReadBy();
   if (!book.readBy || typeof book.readBy !== "object") book.readBy = emptyReadBy();
-  for (const u of USERS) if (typeof book.readBy[u] !== "boolean") book.readBy[u] = false;
+  for (const u of USERS) {
+    if (typeof book.readBy[u] !== "boolean") book.readBy[u] = false;
+  }
   return book.readBy;
 }
 
@@ -48,15 +51,31 @@ function myReadStatus(book) {
   return !!book.readBy[CURRENT_USER];
 }
 
+function parseYesNo(v) {
+  if (typeof v === "boolean") return v;
+  const s = String(v || "").trim().toLowerCase();
+  if (s === "yes" || s === "true" || s === "1") return true;
+  return false;
+}
+
 /* ===================== NAVIGATION ===================== */
 function showView(id) {
-  document.querySelectorAll(".view").forEach((v) => (v.style.display = "none"));
-  document.getElementById(id).style.display = "block";
+  const views = document.querySelectorAll(".view");
+  for (const v of views) v.style.display = "none";
+
+  const target = document.getElementById(id);
+  if (target) target.style.display = "block";
 
   if (id === "view-scanner") {
     setTimeout(startScanner, 200);
   } else {
     stopScanner();
+  }
+
+  // Auto sync when opening library (helps iPhone/Safari where localStorage may be empty)
+  if (id === "view-library") {
+    // don’t spam requests
+    if (!librarySyncInFlight) loadLibrary();
   }
 }
 
@@ -80,7 +99,7 @@ function resetDetectionStability() {
 }
 
 function isPlausibleIsbnBarcode(raw) {
-  const cleaned = raw.replace(/[^0-9X]/gi, "");
+  const cleaned = String(raw || "").replace(/[^0-9X]/gi, "");
   if (cleaned.length === 13) return cleaned.startsWith("978") || cleaned.startsWith("979");
   if (cleaned.length === 10) return true;
   return false;
@@ -93,7 +112,7 @@ async function startScanner() {
   resetDetectionStability();
 
   const box = document.getElementById("interactive");
-  box.innerHTML = "";
+  if (box) box.innerHTML = "";
 
   await loadQuagga();
 
@@ -145,7 +164,7 @@ async function startScanner() {
       }
       Quagga.start();
 
-      const v = box.querySelector("video");
+      const v = box ? box.querySelector("video") : null;
       if (v) {
         v.setAttribute("playsinline", "true");
         v.setAttribute("webkit-playsinline", "true");
@@ -181,7 +200,7 @@ function stopScanner() {
 function onDetectedRaw(result) {
   if (detectionLocked) return;
 
-  const raw = result?.codeResult?.code;
+  const raw = result && result.codeResult ? result.codeResult.code : null;
   if (!raw) return;
 
   if (!isPlausibleIsbnBarcode(raw)) return;
@@ -207,15 +226,17 @@ async function onDetected(result) {
 
   stopScanner();
 
-  if (navigator.vibrate) navigator.vibrate(80);
+  try {
+    if (navigator.vibrate) navigator.vibrate(80);
+  } catch {}
 
-  const raw = result.codeResult.code;
+  const raw = result && result.codeResult ? result.codeResult.code : "";
   handleISBN(raw);
 }
 
 /* ===================== BOOK LOOKUPS ===================== */
 function normalizeIsbn(raw) {
-  return raw.replace(/[^0-9X]/gi, "");
+  return String(raw || "").replace(/[^0-9X]/gi, "");
 }
 
 async function lookupGoogleBooks(isbn) {
@@ -233,8 +254,8 @@ async function lookupGoogleBooks(isbn) {
   const i = j.items[0].volumeInfo || {};
   return {
     title: i.title || null,
-    author: i.authors?.join(", ") || null,
-    image: i.imageLinks?.thumbnail || null,
+    author: i.authors ? i.authors.join(", ") : null,
+    image: i.imageLinks ? i.imageLinks.thumbnail : null,
     category: (i.categories && i.categories[0]) || null,
   };
 }
@@ -248,21 +269,22 @@ async function lookupOpenLibrary(isbn) {
   if (!b) return null;
 
   const title = b.title || null;
-  const author = b.authors?.map((a) => a.name).join(", ") || null;
+  const author = b.authors ? b.authors.map((a) => a.name).join(", ") : null;
 
-  let image = b.cover?.medium || b.cover?.large || b.cover?.small || null;
+  let image = (b.cover && (b.cover.medium || b.cover.large || b.cover.small)) || null;
   if (image) image = image.replace("http://", "https://");
   const fallback = `https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg`;
 
   let rawSubjects = [];
   if (Array.isArray(b.subjects) && b.subjects.length) {
     rawSubjects = b.subjects
-      .map((s) => (typeof s === "string" ? s : s?.name))
+      .map((s) => (typeof s === "string" ? s : s && s.name))
       .filter(Boolean);
   }
 
+  // Better: fetch work subjects (usually richer)
   try {
-    const workKey = b.works?.[0]?.key;
+    const workKey = b.works && b.works[0] ? b.works[0].key : null;
     if (workKey) {
       const wr = await fetch(`https://openlibrary.org${workKey}.json`);
       const wj = await wr.json();
@@ -294,33 +316,23 @@ async function handleISBN(raw) {
 
     const title = meta.title || "Unknown";
     const author = meta.author || "Unknown";
-    const image = (meta.image || `https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg`).replace(
-      "http://",
-      "https://"
-    );
+    const image = String(meta.image || `https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg`).replace("http://", "https://");
     const category = meta.category || "General & Other";
 
     const isRead = await askReadStatus(title);
 
-    const book = {
-      isbn,
-      title,
-      author,
-      image,
-      category,
-      readBy: emptyReadBy(),
-    };
+    const book = { isbn, title, author, image, category, readBy: emptyReadBy() };
     book.readBy[CURRENT_USER] = !!isRead;
 
-    // upsert locally (keep any existing readBy for other users if we already had the book)
+    // preserve existing other-user statuses if this isbn already exists locally
     const existing = myLibrary.find((b) => b.isbn === isbn);
     if (existing) {
       ensureReadBy(existing);
-      book.readBy = { ...existing.readBy, ...book.readBy }; // preserve others
-      // but ensure the current user reflects the latest answer
+      book.readBy = { ...existing.readBy, ...book.readBy };
       book.readBy[CURRENT_USER] = !!isRead;
     }
 
+    // upsert
     myLibrary = myLibrary.filter((b) => b.isbn !== isbn);
     myLibrary.push(book);
 
@@ -339,19 +351,36 @@ async function handleISBN(raw) {
 
 /* ===================== CLOUD ===================== */
 async function loadLibrary() {
+  librarySyncInFlight = true;
   showToast("Syncing...", "#17a2b8");
 
   try {
-    const res = await fetch(GOOGLE_SHEET_URL);
+    const res = await fetch(GOOGLE_SHEET_URL, { cache: "no-store" });
     const data = await res.json();
 
     if (!Array.isArray(data)) throw new Error("Bad data");
 
-    myLibrary = data.map(b => {
+    myLibrary = data.map((b) => {
       const isbn = String(b.isbn || "").trim();
       const img =
         String(b.image || "").replace("http://", "https://") ||
         (isbn ? `https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg` : "");
+
+      // SUPPORT BOTH SHAPES:
+      // 1) flat columns: read_sohini/read_som/read_rehan = "YES"/"NO"
+      // 2) nested object: readBy: { sohini: true, ... }
+      const readBy = emptyReadBy();
+
+      // nested readBy
+      if (b.readBy && typeof b.readBy === "object") {
+        for (const u of USERS) readBy[u] = !!b.readBy[u];
+      }
+
+      // flat columns override/augment if present
+      for (const u of USERS) {
+        const k = `read_${u}`;
+        if (k in b) readBy[u] = parseYesNo(b[k]);
+      }
 
       return {
         isbn,
@@ -359,11 +388,7 @@ async function loadLibrary() {
         author: b.author || "Unknown",
         image: img,
         category: b.category || "General & Other",
-        readBy: {
-          sohini: !!b.readBy?.sohini,
-          som: !!b.readBy?.som,
-          rehan: !!b.readBy?.rehan
-        }
+        readBy,
       };
     });
 
@@ -376,14 +401,12 @@ async function loadLibrary() {
     showToast("Offline Mode", "#6c757d");
     populateCategoryFilter();
     applyFilters();
+  } finally {
+    librarySyncInFlight = false;
   }
 }
 
-
-
-
 function cloudSync(action, book) {
-  // send current user too (useful on Apps Script side)
   const payload = { action, user: CURRENT_USER, data: book };
 
   fetch(GOOGLE_SHEET_URL, {
@@ -398,6 +421,7 @@ function askReadStatus(title) {
     const m = document.getElementById("read-modal");
     document.getElementById("modal-title").textContent = title;
     m.style.display = "flex";
+
     document.getElementById("btn-read-yes").onclick = () => {
       m.style.display = "none";
       res(true);
@@ -409,8 +433,11 @@ function askReadStatus(title) {
   });
 }
 
-function renderLibrary(list = myLibrary) {
+function renderLibrary(list) {
+  if (!Array.isArray(list)) list = myLibrary;
+
   const ul = document.getElementById("book-list");
+  if (!ul) return;
   ul.innerHTML = "";
 
   list.forEach((b) => {
@@ -445,12 +472,8 @@ function renderLibrary(list = myLibrary) {
     category.textContent = "📚 " + (b.category || "Uncategorised");
 
     const flag = document.createElement("span");
-    const userRead = b.readBy?.[CURRENT_USER];
-    const mine = b.readBy?.[CURRENT_USER];
-
     flag.className = `status-flag ${mine ? "read" : "unread"}`;
     flag.textContent = mine ? "✅ Read" : "📖 Unread";
-
     flag.onclick = () => toggleRead(b.isbn);
 
     const del = document.createElement("button");
@@ -465,24 +488,26 @@ function renderLibrary(list = myLibrary) {
 }
 
 function toggleRead(isbn) {
-  const b = myLibrary.find(x => x.isbn === isbn);
+  const b = myLibrary.find((x) => x.isbn === isbn);
   if (!b) return;
 
+  ensureReadBy(b);
   b.readBy[CURRENT_USER] = !b.readBy[CURRENT_USER];
-  b.isRead = b.readBy[CURRENT_USER];
 
   saveLibrary();
+  populateCategoryFilter();
   applyFilters();
+
   cloudSync("update", b);
 }
-
 
 function deleteBook(isbn) {
   if (!confirm("Delete?")) return;
   const b = myLibrary.find((x) => x.isbn === isbn);
-  myLibrary = myLibrary.filter((x) => x.isbn !== isbn);
 
+  myLibrary = myLibrary.filter((x) => x.isbn !== isbn);
   saveLibrary();
+  populateCategoryFilter();
   applyFilters();
 
   if (b) cloudSync("delete", b);
@@ -504,6 +529,8 @@ function showToast(msg, color) {
 }
 
 function isValidISBN(isbn) {
+  isbn = String(isbn || "");
+
   if (isbn.length === 10) {
     let sum = 0;
     for (let i = 0; i < 10; i++) {
@@ -516,6 +543,7 @@ function isValidISBN(isbn) {
 
   if (isbn.length === 13) {
     if (!/^\d{13}$/.test(isbn)) return false;
+
     let sum = 0;
     for (let i = 0; i < 13; i++) {
       const n = parseInt(isbn[i], 10);
@@ -529,30 +557,35 @@ function isValidISBN(isbn) {
 
 /* ===================== FILTERS ===================== */
 function applyFilters() {
-  const q = document.getElementById("searchBox")?.value?.toLowerCase() || "";
-  const readFilter = document.getElementById("filterRead")?.value || "all";
-  const catFilter = document.getElementById("filterCategory")?.value || "all";
-  const sort = document.getElementById("sortBy")?.value || "title";
+  const searchEl = document.getElementById("searchBox");
+  const readEl = document.getElementById("filterRead");
+  const catEl = document.getElementById("filterCategory");
+  const sortEl = document.getElementById("sortBy");
 
-  let books = [...myLibrary];
+  const q = searchEl ? (searchEl.value || "").toLowerCase() : "";
+  const readFilter = readEl ? readEl.value : "all";
+  const catFilter = catEl ? catEl.value : "all";
+  const sort = sortEl ? sortEl.value : "title";
+
+  let books = myLibrary.slice();
 
   if (q) {
-    books = books.filter(
-      (b) =>
+    books = books.filter((b) => {
+      return (
         (b.title || "").toLowerCase().includes(q) ||
         (b.author || "").toLowerCase().includes(q) ||
         (b.category || "").toLowerCase().includes(q) ||
         (b.isbn || "").includes(q)
-    );
+      );
+    });
   }
 
-  if (readFilter === "read") books = books.filter(b => b.readBy?.[CURRENT_USER]);
-  if (readFilter === "unread") books = books.filter(b => !b.readBy?.[CURRENT_USER]);
-
+  if (readFilter === "read") books = books.filter((b) => !!(b.readBy && b.readBy[CURRENT_USER]));
+  if (readFilter === "unread") books = books.filter((b) => !(b.readBy && b.readBy[CURRENT_USER]));
 
   if (catFilter !== "all") books = books.filter((b) => (b.category || "") === catFilter);
 
-  books.sort((a, b) => ((a[sort] || "") + "").localeCompare(((b[sort] || "") + "")));
+  books.sort((a, b) => (String(a[sort] || "")).localeCompare(String(b[sort] || "")));
 
   renderLibrary(books);
   updateHomeStats();
@@ -560,11 +593,15 @@ function applyFilters() {
 
 function updateHomeStats() {
   const total = myLibrary.length;
-  const read = myLibrary.filter(b => b.readBy?.[CURRENT_USER]).length;
+  const read = myLibrary.filter((b) => b.readBy && b.readBy[CURRENT_USER]).length;
 
-  document.getElementById("stat-count").textContent = total;
-  document.getElementById("stat-read").textContent = read;
-  document.getElementById("stat-unread").textContent = total - read;
+  const sc = document.getElementById("stat-count");
+  const sr = document.getElementById("stat-read");
+  const su = document.getElementById("stat-unread");
+
+  if (sc) sc.textContent = total;
+  if (sr) sr.textContent = read;
+  if (su) su.textContent = total - read;
 }
 
 function populateCategoryFilter() {
@@ -583,21 +620,18 @@ function normaliseCategory(subjects = []) {
 
   if (s.some((x) => /mystery|detective|crime|thriller|suspense|private investigator|missing persons|murder/.test(x)))
     return "Mystery & Thriller";
-
   if (s.some((x) => /fantasy|quests|elder wand|mutants/.test(x))) return "Fantasy";
   if (s.some((x) => /science fiction|sci-fi|alien/.test(x))) return "Science Fiction";
   if (s.some((x) => /mythology/.test(x))) return "Mythology";
-
   if (s.some((x) => /history|historical|roman|romans|england|great britain|asia/.test(x)))
     return "History & Historical Fiction";
-
   if (s.some((x) => /literary|english literature|american literature|classic|fiction/.test(x)))
     return "Literary Fiction";
-
   if (s.some((x) => /romance|love poetry|mothers and daughters/.test(x))) return "Romance & Relationships";
   if (s.some((x) => /biography|authors|autobiography|biographical fiction/.test(x))) return "Biography & Memoir";
   if (s.some((x) => /psychology|social|abuse|famil|brothers|society/.test(x))) return "Psychology & Society";
-  if (s.some((x) => /business|economics|leadership|management|corporation|strategy/.test(x))) return "Business & Economics";
+  if (s.some((x) => /business|economics|leadership|management|corporation|strategy/.test(x)))
+    return "Business & Economics";
   if (s.some((x) => /self-help|critical thinking|contentment|life change|quality of work life/.test(x)))
     return "Self-Help & Mindfulness";
   if (s.some((x) => /children|juvenile|young adult|school/.test(x))) return "Children & Young Adult";
@@ -613,10 +647,13 @@ function normaliseCategory(subjects = []) {
 }
 
 /* ===================== MANUAL ISBN ===================== */
-document.getElementById("manual-btn").onclick = () => {
-  const isbn = prompt("Enter ISBN:");
-  if (isbn) handleISBN(isbn.trim());
-};
+const manualBtn = document.getElementById("manual-btn");
+if (manualBtn) {
+  manualBtn.onclick = () => {
+    const isbn = prompt("Enter ISBN:");
+    if (isbn) handleISBN(isbn.trim());
+  };
+}
 
 /* ===================== INIT ===================== */
 window.onload = () => {
@@ -624,10 +661,9 @@ window.onload = () => {
   if (saved) {
     try {
       myLibrary = JSON.parse(saved) || [];
-      // upgrade any old records to readBy
       myLibrary = myLibrary.map((b) => {
         // legacy isRead -> assume it was sohini
-        if (!b.readBy && "isRead" in b) {
+        if (!b.readBy && Object.prototype.hasOwnProperty.call(b, "isRead")) {
           b.readBy = emptyReadBy();
           b.readBy.sohini = !!b.isRead;
         }
