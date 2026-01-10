@@ -344,49 +344,42 @@ async function loadLibrary() {
   try {
     const res = await fetch(GOOGLE_SHEET_URL);
     const data = await res.json();
-    if (!Array.isArray(data)) throw "Bad data";
 
-    myLibrary = data.map(b => {
-      const isbn = (b.isbn || "").toString().trim();
+    if (Array.isArray(data)) {
+      myLibrary = data.map(b => {
+        const isbn = (b.isbn || "").toString().trim();
+        const img =
+          (b.image || "").toString().replace("http://", "https://") ||
+          (isbn ? `https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg` : "");
 
-      const img =
-        (b.image || "").toString().replace("http://", "https://") ||
-        (isbn ? `https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg` : "");
+        return {
+          isbn,
+          title: b.title || "Unknown",
+          author: b.author || "Unknown",
+          image: img,
+          category: b.category || "General & Other",
 
-      const yn = v => String(v || "").toUpperCase() === "YES";
+          // 💥 THE FIX:
+          isRead: String(b.isRead).toUpperCase() === "YES"
+        };
+      });
 
-      // SAFARI-SAFE ACCESS
-      const rSohini = yn(b["read_sohini"]);
-      const rSom    = yn(b["read_som"]);
-      const rRehan  = yn(b["read_rehan"]);
+      saveLibrary();
+      populateCategoryFilter();
+      applyFilters();
+      showToast("Sync OK", "#28a745");
+      return;
+    }
 
-      return {
-        isbn,
-        title: b.title || "Unknown",
-        author: b.author || "Unknown",
-        image: img,
-        category: b.category || "General & Other",
-
-        readBy: {
-          sohini: rSohini,
-          som: rSom,
-          rehan: rRehan
-        }
-      };
-    });
-
-    saveLibrary();
-    populateCategoryFilter();
-    applyFilters();
-    showToast("Sync OK", "#28a745");
-
+    showToast("No data returned", "#dc3545");
   } catch (e) {
-    console.error("SYNC FAIL:", e);
+    console.error(e);
     showToast("Offline Mode", "#6c757d");
     populateCategoryFilter();
     applyFilters();
   }
 }
+
 
 
 
