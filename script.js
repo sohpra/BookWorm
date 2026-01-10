@@ -445,9 +445,10 @@ function renderLibrary(list = myLibrary) {
     category.textContent = "📚 " + (b.category || "Uncategorised");
 
     const flag = document.createElement("span");
-    const mine = b.readBy?.[CURRENT_USER];
-    flag.className = `status-flag ${mine ? "read" : "unread"}`;
-    flag.textContent = mine ? "✅ Read" : "📖 Unread";
+    const userRead = b.readBy?.[CURRENT_USER];
+    flag.className = `status-flag ${userRead ? "read" : "unread"}`;
+    flag.textContent = userRead ? "✅ Read" : "📖 Unread";
+
     flag.onclick = () => toggleRead(b.isbn);
 
     const del = document.createElement("button");
