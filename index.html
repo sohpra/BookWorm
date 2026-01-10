@@ -85,6 +85,22 @@
     <h2 style="flex-grow:1;margin:0 10px;">My Library</h2>
     <button class="sync-btn" onclick="loadLibrary()">🔄 Sync</button>
   </div>
+  <div class="library-tools">
+  <input id="searchBox" placeholder="🔍 Search books..." oninput="applyFilters()">
+
+  <select id="filterRead" onchange="applyFilters()">
+    <option value="all">All</option>
+    <option value="read">Read</option>
+    <option value="unread">Unread</option>
+  </select>
+
+  <select id="sortBy" onchange="applyFilters()">
+    <option value="title">Sort: Title</option>
+    <option value="author">Sort: Author</option>
+    <option value="category">Sort: Category</option>
+  </select>
+  </div>
+
   <ul id="book-list"></ul>
 </div>
 

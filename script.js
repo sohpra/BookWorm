@@ -346,6 +346,8 @@ async function loadLibrary() {
   } catch {
     showToast("Offline Mode", "#6c757d");
   }
+  applyFilters();
+
 }
 
 function cloudSync(action, book) {
@@ -372,16 +374,11 @@ function askReadStatus(title) {
   });
 }
 
-function renderLibrary() {
-  const list = document.getElementById("book-list");
-  list.innerHTML = "";
+function renderLibrary(list = myLibrary) {
+  const ul = document.getElementById("book-list");
+  ul.innerHTML = "";
 
-  // Optional: consistent ordering
-  const sorted = [...myLibrary].sort((a, b) =>
-    (a.title || "").localeCompare(b.title || "")
-  );
-
-  sorted.forEach((b) => {
+  list.forEach((b) => {
     const li = document.createElement("li");
     li.className = "book-item";
 
@@ -390,7 +387,6 @@ function renderLibrary() {
     img.alt = b.title || "Book cover";
     img.loading = "lazy";
     img.onerror = () => {
-      // fallback if sheet image is broken
       if (b.isbn) img.src = `https://covers.openlibrary.org/b/isbn/${b.isbn}-M.jpg`;
     };
 
@@ -398,7 +394,12 @@ function renderLibrary() {
     info.className = "book-info";
 
     const title = document.createElement("strong");
-    title.textContent = b.title;
+    title.textContent = b.title || "Unknown title";
+
+    const author = document.createElement("div");
+    author.style.fontSize = ".85rem";
+    author.style.opacity = ".7";
+    author.textContent = b.author || "";
 
     const flag = document.createElement("span");
     flag.className = `status-flag ${b.isRead ? "read" : "unread"}`;
@@ -410,11 +411,12 @@ function renderLibrary() {
     del.textContent = "🗑️";
     del.onclick = () => deleteBook(b.isbn);
 
-    info.append(title, flag);
+    info.append(title, author, flag);
     li.append(img, info, del);
-    list.appendChild(li);
+    ul.appendChild(li);
   });
-    // Update home stats
+
+  // Always update HOME stats from full library
   const total = myLibrary.length;
   const read = myLibrary.filter(b => b.isRead).length;
   const unread = total - read;
@@ -422,8 +424,8 @@ function renderLibrary() {
   document.getElementById("stat-count").textContent = total;
   document.getElementById("stat-read").textContent = read;
   document.getElementById("stat-unread").textContent = unread;
-
 }
+
 
 function toggleRead(isbn) {
   const b = myLibrary.find((x) => x.isbn === isbn);
@@ -482,6 +484,33 @@ function isValidISBN(isbn) {
   }
 
   return false;
+}
+
+function applyFilters() {
+  const q = document.getElementById("searchBox").value.toLowerCase();
+  const readFilter = document.getElementById("filterRead").value;
+  const sort = document.getElementById("sortBy").value;
+
+  let books = [...myLibrary];
+
+  // SEARCH
+  if (q) {
+    books = books.filter(b =>
+      (b.title || "").toLowerCase().includes(q) ||
+      (b.author || "").toLowerCase().includes(q) ||
+      (b.category || "").toLowerCase().includes(q) ||
+      (b.isbn || "").includes(q)
+    );
+  }
+
+  // READ FILTER
+  if (readFilter === "read") books = books.filter(b => b.isRead);
+  if (readFilter === "unread") books = books.filter(b => !b.isRead);
+
+  // SORT
+  books.sort((a, b) => (a[sort] || "").localeCompare(b[sort] || ""));
+
+  renderLibrary(books);
 }
 
 /* ===================== MANUAL ISBN ===================== */

@@ -61,6 +61,19 @@ body {
   box-shadow: 0 3px 8px rgba(0,0,0,.22);
 }
 
+.library-tools {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.library-tools input,
+.library-tools select {
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(0,0,0,.1);
+  font-size: 1rem;
+}
 
 
 .app-logo {
