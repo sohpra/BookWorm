@@ -416,14 +416,7 @@ function renderLibrary(list = myLibrary) {
     ul.appendChild(li);
   });
 
-  // Always update HOME stats from full library
-  const total = myLibrary.length;
-  const read = myLibrary.filter(b => b.isRead).length;
-  const unread = total - read;
-
-  document.getElementById("stat-count").textContent = total;
-  document.getElementById("stat-read").textContent = read;
-  document.getElementById("stat-unread").textContent = unread;
+  
 }
 
 
@@ -508,9 +501,13 @@ function applyFilters() {
   if (readFilter === "unread") books = books.filter(b => !b.isRead);
 
   // SORT
-  books.sort((a, b) => (a[sort] || "").localeCompare(b[sort] || ""));
+  books.sort((a, b) =>
+    (a[sort] || "").toString().localeCompare((b[sort] || "").toString())
+  );
 
   renderLibrary(books);
+  updateHomeStats();
+
 }
 
 /* ===================== MANUAL ISBN ===================== */
@@ -526,4 +523,14 @@ window.onload = () => {
 
   renderLibrary();
   showView("view-home");
+  applyFilters();
+
 };
+
+function updateHomeStats() {
+  const total = myLibrary.length;
+  const read = myLibrary.filter(b => b.isRead).length;
+  document.getElementById("stat-count").textContent = total;
+  document.getElementById("stat-read").textContent = read;
+  document.getElementById("stat-unread").textContent = total - read;
+}

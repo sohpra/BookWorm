@@ -54,17 +54,26 @@ body {
 }
 
 .inline-logo {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
+  width: 28px;
+  height: 28px;
   object-fit: contain;
+  border-radius: 7px;
   box-shadow: 0 3px 8px rgba(0,0,0,.22);
+  margin-right: 2px;
 }
+
 
 .library-tools {
   display: grid;
+  grid-template-columns: 1fr 110px 140px;
   gap: 10px;
   margin-bottom: 16px;
+}
+
+@media (max-width: 500px) {
+  .library-tools {
+    grid-template-columns: 1fr;
+  }
 }
 
 .library-tools input,
