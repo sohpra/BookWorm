@@ -87,6 +87,10 @@
   </div>
   <div class="library-tools">
   <input id="searchBox" placeholder="🔍 Search books..." oninput="applyFilters()">
+  <select id="filterCategory" onchange="applyFilters()">
+  <option value="all">All categories</option>
+  </select>
+
 
   <select id="filterRead" onchange="applyFilters()">
     <option value="all">All</option>

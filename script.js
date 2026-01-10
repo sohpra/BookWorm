@@ -234,9 +234,12 @@ async function lookupOpenLibrary(isbn) {
   const title = b.title || null;
   const author = b.authors?.map(a => a.name).join(", ") || null;
 
-  let category =
-    b.subjects?.map(s => s.name)
-      .find(s => !s.includes("accessible") && !s.includes("Protected")) || null;
+  const rawSubjects =
+    b.work?.subjects ||
+    b.subjects?.map(s => s.name) ||
+    [];
+
+  const category = normaliseCategory(rawSubjects);
 
   let image = b.cover?.medium || b.cover?.large || null;
   if (image) image = image.replace("http://", "https://");
@@ -245,6 +248,7 @@ async function lookupOpenLibrary(isbn) {
 
   return { title, author, image: image || fallback, category };
 }
+
 
 
 async function handleISBN(raw) {
@@ -259,54 +263,33 @@ async function handleISBN(raw) {
   showToast("Searching...", "#6c5ce7");
 
   try {
-    let title = null;
-    let author = null;
-    let image = null;
+    let meta = null;
 
-    /* PRIMARY — OpenLibrary (fast, no key, reliable) */
-    try {
-      const o = await fetch(`https://openlibrary.org/api/books?bibkeys=ISBN:${isbn}&format=json&jscmd=data`);
-      const oj = await o.json();
-      const b = oj[`ISBN:${isbn}`];
+    // PRIMARY — OpenLibrary (with category!)
+    meta = await lookupOpenLibrary(isbn);
 
-      if (b) {
-        title = b.title;
-        author = b.authors?.map(a => a.name).join(", ");
-        image = b.cover?.medium || b.cover?.large;
-      }
-    } catch {}
-
-    /* OPTIONAL — Google Books fallback */
-    if (!title) {
-      try {
-        const g = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}&maxResults=1`);
-        const gj = await g.json();
-        const i = gj.items?.[0]?.volumeInfo;
-
-        if (i) {
-          title = i.title;
-          author = i.authors?.join(", ");
-          image = i.imageLinks?.thumbnail;
-        }
-      } catch {}
+    // OPTIONAL Google fallback
+    if (!meta?.title) {
+      meta = await lookupGoogleBooks(isbn);
     }
 
-    if (!title) throw new Error("Not found");
+    if (!meta?.title) throw new Error("Not found");
 
-    title ||= "Unknown";
-    author ||= "Unknown";
-    image ||= `https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg`;
-    image = image.replace("http://", "https://");
+    const title = meta.title || "Unknown";
+    const author = meta.author || "Unknown";
+    const image = (meta.image || `https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg`).replace("http://", "https://");
+    const category = meta.category || "General & Other";
 
     const isRead = await askReadStatus(title);
-    const book = { isbn, title, author, image, category: meta?.category || "Uncategorised", isRead };
 
+    const book = { isbn, title, author, image, category, isRead };
 
     myLibrary = myLibrary.filter(b => b.isbn !== isbn);
     myLibrary.push(book);
 
     saveLibrary();
     renderLibrary();
+    populateCategoryFilter();
     cloudSync("add", book);
     showView("view-library");
 
@@ -342,6 +325,7 @@ async function loadLibrary() {
 
       saveLibrary();
       renderLibrary();
+      populateCategoryFilter();
       showToast("Sync OK", "#28a745");
     }
   } catch {
@@ -486,6 +470,7 @@ function isValidISBN(isbn) {
 function applyFilters() {
   const q = document.getElementById("searchBox").value.toLowerCase();
   const readFilter = document.getElementById("filterRead").value;
+  const catFilter = document.getElementById("filterCategory").value;
   const sort = document.getElementById("sortBy").value;
 
   let books = [...myLibrary];
@@ -504,6 +489,9 @@ function applyFilters() {
   if (readFilter === "read") books = books.filter(b => b.isRead);
   if (readFilter === "unread") books = books.filter(b => !b.isRead);
 
+  // CATEGORY FILTER
+  if (catFilter !== "all") books = books.filter(b => b.category === catFilter);
+
   // SORT
   books.sort((a, b) =>
     (a[sort] || "").toString().localeCompare((b[sort] || "").toString())
@@ -511,8 +499,8 @@ function applyFilters() {
 
   renderLibrary(books);
   updateHomeStats();
-
 }
+
 
 /* ===================== MANUAL ISBN ===================== */
 document.getElementById("manual-btn").onclick = () => {
@@ -537,4 +525,76 @@ function updateHomeStats() {
   document.getElementById("stat-count").textContent = total;
   document.getElementById("stat-read").textContent = read;
   document.getElementById("stat-unread").textContent = total - read;
+}
+
+function normaliseCategory(subjects = []) {
+  const s = subjects.map(x => x.toLowerCase());
+
+  if (s.some(x => /mystery|detective|crime|thriller|suspense|private investigator|missing persons|murder/.test(x)))
+    return "Mystery & Thriller";
+
+  if (s.some(x => /fantasy|quests|elder wand|mutants/.test(x)))
+    return "Fantasy";
+
+  if (s.some(x => /science fiction|sci-fi|alien/.test(x)))
+    return "Science Fiction";
+
+  if (s.some(x => /mythology/.test(x)))
+    return "Mythology";
+
+  if (s.some(x => /history|historical|roman|romans|england|great britain|asia/.test(x)))
+    return "History & Historical Fiction";
+
+  if (s.some(x => /literary|english literature|american literature|classic|fiction/.test(x)))
+    return "Literary Fiction";
+
+  if (s.some(x => /romance|love poetry|mothers and daughters/.test(x)))
+    return "Romance & Relationships";
+
+  if (s.some(x => /biography|authors|autobiography|biographical fiction/.test(x)))
+    return "Biography & Memoir";
+
+  if (s.some(x => /psychology|social|abuse|famil|brothers|society/.test(x)))
+    return "Psychology & Society";
+
+  if (s.some(x => /business|economics|leadership|management|corporation|strategy/.test(x)))
+    return "Business & Economics";
+
+  if (s.some(x => /self-help|critical thinking|contentment|life change|quality of work life/.test(x)))
+    return "Self-Help & Mindfulness";
+
+  if (s.some(x => /children|juvenile|young adult|school/.test(x)))
+    return "Children & Young Adult";
+
+  if (s.some(x => /poetry|poems/.test(x)))
+    return "Poetry";
+
+  if (s.some(x => /religion|hindu|jewish/.test(x)))
+    return "Religion & Spirituality";
+
+  if (s.some(x => /technology|engineering|science/.test(x)))
+    return "Technology & Science";
+
+  if (s.some(x => /comic|graphic|astérix|tintin|art|music|humou?r|puzzle/.test(x)))
+    return "Comics, Art & Humor";
+
+  if (s.some(x => /travel/.test(x)))
+    return "Travel & Adventure";
+
+  if (s.some(x => /language|grammar|translation|education|school/.test(x)))
+    return "Education & Language";
+
+  if (s.some(x => /short stories/.test(x)))
+    return "Short Stories";
+
+  return "General & Other";
+}
+
+function populateCategoryFilter() {
+  const select = document.getElementById("filterCategory");
+  if (!select) return;
+
+  const cats = [...new Set(myLibrary.map(b => b.category).filter(Boolean))].sort();
+  select.innerHTML = `<option value="all">All categories</option>` +
+    cats.map(c => `<option value="${c}">${c}</option>`).join("");
 }
