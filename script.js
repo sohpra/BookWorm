@@ -234,19 +234,39 @@ async function lookupOpenLibrary(isbn) {
   const title = b.title || null;
   const author = b.authors?.map(a => a.name).join(", ") || null;
 
-  const rawSubjects =
-    b.work?.subjects ||
-    b.subjects?.map(s => s.name) ||
-    [];
+  // cover
+  let image = b.cover?.medium || b.cover?.large || b.cover?.small || null;
+  if (image) image = image.replace("http://", "https://");
+  const fallback = `https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg`;
+
+  // subjects (best source = work subjects)
+  let rawSubjects = [];
+
+  // sometimes api/books includes subjects directly
+  if (Array.isArray(b.subjects) && b.subjects.length) {
+    rawSubjects = b.subjects.map(s => (typeof s === "string" ? s : s?.name)).filter(Boolean);
+  }
+
+  // better: fetch work subjects
+  try {
+    const workKey = b.works?.[0]?.key; // e.g. "/works/OL123W"
+    if (workKey) {
+      const wr = await fetch(`https://openlibrary.org${workKey}.json`);
+      const wj = await wr.json();
+      if (Array.isArray(wj.subjects) && wj.subjects.length) {
+        rawSubjects = wj.subjects;
+      }
+    }
+  } catch {}
 
   const category = normaliseCategory(rawSubjects);
 
-  let image = b.cover?.medium || b.cover?.large || null;
-  if (image) image = image.replace("http://", "https://");
-
-  const fallback = `https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg`;
-
-  return { title, author, image: image || fallback, category };
+  return {
+    title,
+    author,
+    image: image || fallback,
+    category,
+  };
 }
 
 
@@ -263,28 +283,34 @@ async function handleISBN(raw) {
   showToast("Searching...", "#6c5ce7");
 
   try {
-    // SINGLE SOURCE OF TRUTH — category aware
+    // OpenLibrary first (category-aware), then Google fallback
     let meta = await lookupOpenLibrary(isbn);
     if (!meta) meta = await lookupGoogleBooks(isbn);
     if (!meta) throw new Error("Not found");
 
     const title = meta.title || "Unknown";
     const author = meta.author || "Unknown";
-    const image = (meta.image || `https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg`).replace("http://", "https://");
+    const image = (meta.image || `https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg`)
+      .replace("http://", "https://");
+
     const category = meta.category || "General & Other";
 
     const isRead = await askReadStatus(title);
 
     const book = { isbn, title, author, image, category, isRead };
 
+    // upsert locally
     myLibrary = myLibrary.filter(b => b.isbn !== isbn);
     myLibrary.push(book);
 
     saveLibrary();
-    renderLibrary();
-    cloudSync("add", book);
-    showView("view-library");
 
+    // IMPORTANT: update filter dropdown + render via filters
+    populateCategoryFilter();
+    applyFilters();
+
+    cloudSync("add", book); // your GAS may return "Exists", but local will still be fine
+    showView("view-library");
   } catch (e) {
     console.error("Lookup failed:", e);
     showToast("Book not found", "#dc3545");
@@ -297,36 +323,51 @@ async function handleISBN(raw) {
 /* ===================== CLOUD ===================== */
 async function loadLibrary() {
   showToast("Syncing...", "#17a2b8");
+
   try {
     const res = await fetch(GOOGLE_SHEET_URL);
     const data = await res.json();
+
     if (Array.isArray(data)) {
-      // Ensure minimal shape + image fallback
       myLibrary = data.map((b) => {
-        const isbn = (b.isbn || "").toString();
+        const isbn = (b.isbn || "").toString().trim();
+
         const img =
           (b.image || "").toString().replace("http://", "https://") ||
-          (isbn ? `https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg` : "https://via.placeholder.com/50x75?text=No+Cover");
+          (isbn
+            ? `https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg`
+            : "https://via.placeholder.com/50x75?text=No+Cover");
+
+        // 👇 IMPORTANT: keep category from sheet
+        const category = (b.category || "").toString().trim() || "General & Other";
+
         return {
           isbn,
           title: b.title || "Unknown",
           author: b.author || "Unknown",
           image: img,
+          category,
           isRead: !!b.isRead,
         };
       });
 
       saveLibrary();
-      renderLibrary();
       populateCategoryFilter();
+      applyFilters(); // renders via renderLibrary(filtered)
       showToast("Sync OK", "#28a745");
+      return;
     }
-  } catch {
-    showToast("Offline Mode", "#6c757d");
-  }
-  applyFilters();
 
+    showToast("No data returned", "#dc3545");
+  } catch (e) {
+    console.error(e);
+    showToast("Offline Mode", "#6c757d");
+    // still show local library
+    populateCategoryFilter();
+    applyFilters();
+  }
 }
+
 
 function cloudSync(action, book) {
   fetch(GOOGLE_SHEET_URL, {
@@ -506,11 +547,11 @@ window.onload = () => {
   const saved = localStorage.getItem("myLibrary");
   if (saved) myLibrary = JSON.parse(saved);
 
-  renderLibrary();
-  showView("view-home");
+  populateCategoryFilter();
   applyFilters();
-
+  showView("view-home");
 };
+
 
 function updateHomeStats() {
   const total = myLibrary.length;
