@@ -351,6 +351,11 @@ async function loadLibrary() {
 
       const yn = v => String(v || "").toUpperCase() === "YES";
 
+      // SAFARI-SAFE ACCESS
+      const rSohini = yn(b["read_sohini"]);
+      const rSom    = yn(b["read_som"]);
+      const rRehan  = yn(b["read_rehan"]);
+
       return {
         isbn,
         title: b.title || "Unknown",
@@ -358,11 +363,10 @@ async function loadLibrary() {
         image: img,
         category: b.category || "General & Other",
 
-        // 👇 hydrate per-user read state
         readBy: {
-          sohini: yn(b.read_sohini),
-          som: yn(b.read_som),
-          rehan: yn(b.read_rehan),
+          sohini: rSohini,
+          som: rSom,
+          rehan: rRehan
         }
       };
     });
@@ -373,7 +377,7 @@ async function loadLibrary() {
     showToast("Sync OK", "#28a745");
 
   } catch (e) {
-    console.error(e);
+    console.error("SYNC FAIL:", e);
     showToast("Offline Mode", "#6c757d");
     populateCategoryFilter();
     applyFilters();
