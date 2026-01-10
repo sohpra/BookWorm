@@ -340,39 +340,38 @@ async function loadLibrary() {
   try {
     const res = await fetch(GOOGLE_SHEET_URL);
     const data = await res.json();
+    if (!Array.isArray(data)) throw "Bad data";
 
-    if (Array.isArray(data)) {
-      myLibrary = data.map(b => {
-        const isbn = (b.isbn || "").toString().trim();
-        const img =
-          (b.image || "").toString().replace("http://", "https://") ||
-          (isbn ? `https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg` : "");
+    myLibrary = data.map(b => {
+      const isbn = (b.isbn || "").toString().trim();
 
-        const readBy = {
-          sohini: !!b.read_sohini,
-          som: !!b.read_som,
-          rehan: !!b.read_rehan
-        };
+      const img =
+        (b.image || "").toString().replace("http://", "https://") ||
+        (isbn ? `https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg` : "");
 
-        return {
-          isbn,
-          title: b.title || "Unknown",
-          author: b.author || "Unknown",
-          image: img,
-          category: b.category || "General & Other",
-          readBy,
-          isRead: readBy[CURRENT_USER]   // 👈 USER-SPECIFIC STATUS
-        };
-      });
+      const yn = v => String(v || "").toUpperCase() === "YES";
 
-      saveLibrary();
-      populateCategoryFilter();
-      applyFilters();
-      showToast("Sync OK", "#28a745");
-      return;
-    }
+      return {
+        isbn,
+        title: b.title || "Unknown",
+        author: b.author || "Unknown",
+        image: img,
+        category: b.category || "General & Other",
 
-    showToast("No data returned", "#dc3545");
+        // 👇 hydrate per-user read state
+        readBy: {
+          sohini: yn(b.read_sohini),
+          som: yn(b.read_som),
+          rehan: yn(b.read_rehan),
+        }
+      };
+    });
+
+    saveLibrary();
+    populateCategoryFilter();
+    applyFilters();
+    showToast("Sync OK", "#28a745");
+
   } catch (e) {
     console.error(e);
     showToast("Offline Mode", "#6c757d");
@@ -380,6 +379,7 @@ async function loadLibrary() {
     applyFilters();
   }
 }
+
 
 
 function cloudSync(action, book) {
