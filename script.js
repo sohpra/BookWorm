@@ -329,31 +329,26 @@ async function loadLibrary() {
     const data = await res.json();
 
     if (Array.isArray(data)) {
-      myLibrary = data.map((b) => {
+      myLibrary = data.map(b => {
         const isbn = (b.isbn || "").toString().trim();
 
         const img =
           (b.image || "").toString().replace("http://", "https://") ||
-          (isbn
-            ? `https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg`
-            : "https://via.placeholder.com/50x75?text=No+Cover");
-
-        // 👇 IMPORTANT: keep category from sheet
-        const category = (b.category || "").toString().trim() || "General & Other";
+          (isbn ? `https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg` : "");
 
         return {
           isbn,
           title: b.title || "Unknown",
           author: b.author || "Unknown",
           image: img,
-          category,
-          isRead: !!b.isRead,
+          category: b.category || "General & Other",
+          isRead: !!b.isRead
         };
       });
 
       saveLibrary();
       populateCategoryFilter();
-      applyFilters(); // renders via renderLibrary(filtered)
+      applyFilters();        // renders library
       showToast("Sync OK", "#28a745");
       return;
     }
@@ -362,11 +357,11 @@ async function loadLibrary() {
   } catch (e) {
     console.error(e);
     showToast("Offline Mode", "#6c757d");
-    // still show local library
     populateCategoryFilter();
     applyFilters();
   }
 }
+
 
 
 function cloudSync(action, book) {
