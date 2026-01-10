@@ -345,33 +345,32 @@ async function loadLibrary() {
     const res = await fetch(GOOGLE_SHEET_URL);
     const data = await res.json();
 
-    if (Array.isArray(data)) {
-      myLibrary = data.map(b => {
-        const isbn = (b.isbn || "").toString().trim();
-        const img =
-          (b.image || "").toString().replace("http://", "https://") ||
-          (isbn ? `https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg` : "");
+    if (!Array.isArray(data)) throw new Error("Bad data");
 
-        return {
-          isbn,
-          title: b.title || "Unknown",
-          author: b.author || "Unknown",
-          image: img,
-          category: b.category || "General & Other",
+    myLibrary = data.map(b => {
+      const isbn = String(b.isbn || "").trim();
+      const img =
+        String(b.image || "").replace("http://", "https://") ||
+        (isbn ? `https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg` : "");
 
-          // 💥 THE FIX:
-          isRead: String(b.isRead).toUpperCase() === "YES"
-        };
-      });
+      return {
+        isbn,
+        title: b.title || "Unknown",
+        author: b.author || "Unknown",
+        image: img,
+        category: b.category || "General & Other",
+        readBy: {
+          sohini: !!b.readBy?.sohini,
+          som: !!b.readBy?.som,
+          rehan: !!b.readBy?.rehan
+        }
+      };
+    });
 
-      saveLibrary();
-      populateCategoryFilter();
-      applyFilters();
-      showToast("Sync OK", "#28a745");
-      return;
-    }
-
-    showToast("No data returned", "#dc3545");
+    saveLibrary();
+    populateCategoryFilter();
+    applyFilters();
+    showToast("Sync OK", "#28a745");
   } catch (e) {
     console.error(e);
     showToast("Offline Mode", "#6c757d");
@@ -447,8 +446,10 @@ function renderLibrary(list = myLibrary) {
 
     const flag = document.createElement("span");
     const userRead = b.readBy?.[CURRENT_USER];
-    flag.className = `status-flag ${userRead ? "read" : "unread"}`;
-    flag.textContent = userRead ? "✅ Read" : "📖 Unread";
+    const mine = b.readBy?.[CURRENT_USER];
+
+    flag.className = `status-flag ${mine ? "read" : "unread"}`;
+    flag.textContent = mine ? "✅ Read" : "📖 Unread";
 
     flag.onclick = () => toggleRead(b.isbn);
 
@@ -545,8 +546,9 @@ function applyFilters() {
     );
   }
 
-  if (readFilter === "read") books = books.filter((b) => myReadStatus(b));
-  if (readFilter === "unread") books = books.filter((b) => !myReadStatus(b));
+  if (readFilter === "read") books = books.filter(b => b.readBy?.[CURRENT_USER]);
+  if (readFilter === "unread") books = books.filter(b => !b.readBy?.[CURRENT_USER]);
+
 
   if (catFilter !== "all") books = books.filter((b) => (b.category || "") === catFilter);
 
@@ -558,7 +560,7 @@ function applyFilters() {
 
 function updateHomeStats() {
   const total = myLibrary.length;
-  const read = myLibrary.filter((b) => myReadStatus(b)).length;
+  const read = myLibrary.filter(b => b.readBy?.[CURRENT_USER]).length;
 
   document.getElementById("stat-count").textContent = total;
   document.getElementById("stat-read").textContent = read;
