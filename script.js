@@ -263,6 +263,7 @@ async function handleISBN(raw) {
   showToast("Searching...", "#6c5ce7");
 
   try {
+    // SINGLE SOURCE OF TRUTH — category aware
     let meta = await lookupOpenLibrary(isbn);
     if (!meta) meta = await lookupGoogleBooks(isbn);
     if (!meta) throw new Error("Not found");
@@ -270,7 +271,6 @@ async function handleISBN(raw) {
     const title = meta.title || "Unknown";
     const author = meta.author || "Unknown";
     const image = (meta.image || `https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg`).replace("http://", "https://");
-
     const category = meta.category || "General & Other";
 
     const isRead = await askReadStatus(title);
@@ -283,11 +283,10 @@ async function handleISBN(raw) {
     saveLibrary();
     renderLibrary();
     cloudSync("add", book);
-    populateCategoryFilter();
     showView("view-library");
 
   } catch (e) {
-    console.error(e);
+    console.error("Lookup failed:", e);
     showToast("Book not found", "#dc3545");
     showView("view-home");
   }
