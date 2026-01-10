@@ -341,58 +341,38 @@ async function loadLibrary() {
     const res = await fetch(GOOGLE_SHEET_URL);
     const data = await res.json();
 
-    if (!Array.isArray(data)) {
-      showToast("No data returned", "#dc3545");
+    if (Array.isArray(data)) {
+      myLibrary = data.map(b => {
+        const isbn = (b.isbn || "").toString().trim();
+        const img =
+          (b.image || "").toString().replace("http://", "https://") ||
+          (isbn ? `https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg` : "");
+
+        const readBy = {
+          sohini: !!b.read_sohini,
+          som: !!b.read_som,
+          rehan: !!b.read_rehan
+        };
+
+        return {
+          isbn,
+          title: b.title || "Unknown",
+          author: b.author || "Unknown",
+          image: img,
+          category: b.category || "General & Other",
+          readBy,
+          isRead: readBy[CURRENT_USER]   // 👈 USER-SPECIFIC STATUS
+        };
+      });
+
+      saveLibrary();
       populateCategoryFilter();
       applyFilters();
+      showToast("Sync OK", "#28a745");
       return;
     }
 
-    myLibrary = data.map((b) => {
-      const isbn = (b.isbn || "").toString().trim();
-
-      const img =
-        (b.image || "").toString().replace("http://", "https://") ||
-        (isbn ? `https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg` : "");
-
-      // Accept multiple possible server shapes:
-      // 1) readBy: {sohini:true,...}
-      // 2) read_sohini/read_som/read_rehan columns
-      // 3) legacy isRead boolean/YES/NO (we assume it belonged to sohini)
-      let readBy = emptyReadBy();
-
-      if (b.readBy && typeof b.readBy === "object") {
-        readBy = { ...readBy, ...b.readBy };
-      } else if (
-        "read_sohini" in b ||
-        "read_som" in b ||
-        "read_rehan" in b
-      ) {
-        readBy.sohini = !!b.read_sohini;
-        readBy.som = !!b.read_som;
-        readBy.rehan = !!b.read_rehan;
-      } else if ("isRead" in b) {
-        // legacy: treat as sohini's status (so you don't lose old data)
-        readBy.sohini = !!b.isRead;
-      }
-
-      const book = {
-        isbn,
-        title: b.title || "Unknown",
-        author: b.author || "Unknown",
-        image: img,
-        category: b.category || "General & Other",
-        readBy,
-      };
-
-      ensureReadBy(book);
-      return book;
-    });
-
-    saveLibrary();
-    populateCategoryFilter();
-    applyFilters();
-    showToast("Sync OK", "#28a745");
+    showToast("No data returned", "#dc3545");
   } catch (e) {
     console.error(e);
     showToast("Offline Mode", "#6c757d");
@@ -400,6 +380,7 @@ async function loadLibrary() {
     applyFilters();
   }
 }
+
 
 function cloudSync(action, book) {
   // send current user too (useful on Apps Script side)
@@ -464,6 +445,7 @@ function renderLibrary(list = myLibrary) {
     category.textContent = "📚 " + (b.category || "Uncategorised");
 
     const flag = document.createElement("span");
+    const mine = b.readBy?.[CURRENT_USER];
     flag.className = `status-flag ${mine ? "read" : "unread"}`;
     flag.textContent = mine ? "✅ Read" : "📖 Unread";
     flag.onclick = () => toggleRead(b.isbn);
@@ -480,16 +462,17 @@ function renderLibrary(list = myLibrary) {
 }
 
 function toggleRead(isbn) {
-  const b = myLibrary.find((x) => x.isbn === isbn);
+  const b = myLibrary.find(x => x.isbn === isbn);
   if (!b) return;
 
-  ensureReadBy(b);
   b.readBy[CURRENT_USER] = !b.readBy[CURRENT_USER];
+  b.isRead = b.readBy[CURRENT_USER];
 
   saveLibrary();
-  applyFilters(); // re-render current filtered/sorted view
+  applyFilters();
   cloudSync("update", b);
 }
+
 
 function deleteBook(isbn) {
   if (!confirm("Delete?")) return;
