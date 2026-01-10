@@ -1,13 +1,23 @@
 /* ===================== CONFIG ===================== */
+/* USERS */
+const USERS = ["sohini", "som", "rehan"];
+
+const params = new URLSearchParams(location.search);
+let CURRENT_USER = params.get("user") || localStorage.getItem("bw_user");
+if (CURRENT_USER) CURRENT_USER = CURRENT_USER.toLowerCase();
+if (!USERS.includes(CURRENT_USER)) CURRENT_USER = "sohini";
+localStorage.setItem("bw_user", CURRENT_USER);
+
+/* ENDPOINTS */
 const GOOGLE_SHEET_URL =
   "https://script.google.com/macros/s/AKfycbw1oZV1HEO21oadgp6IKkq9XR4v-2fwuinuKnAr_U1SyFYIrWqcNIpy6gux44pzgBAa_g/exec";
 const Quagga_CDN =
   "https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js";
 
-// TODO: Replace with your real key when Google Books is provisioned.
 // Leave as "" to skip Google Books and use OpenLibrary only.
 const GOOGLE_BOOKS_API_KEY = "YOUR_KEY";
 
+/* STATE */
 let myLibrary = [];
 let scannerActive = false;
 let detectionLocked = false;
@@ -17,6 +27,22 @@ let mediaStream = null;
 let lastCode = null;
 let sameCount = 0;
 let lastAcceptTs = 0;
+
+/* ===================== HELPERS (READ BY USER) ===================== */
+function emptyReadBy() {
+  return { sohini: false, som: false, rehan: false };
+}
+
+function ensureReadBy(book) {
+  if (!book.readBy || typeof book.readBy !== "object") book.readBy = emptyReadBy();
+  for (const u of USERS) if (typeof book.readBy[u] !== "boolean") book.readBy[u] = false;
+  return book.readBy;
+}
+
+function myReadStatus(book) {
+  ensureReadBy(book);
+  return !!book.readBy[CURRENT_USER];
+}
 
 /* ===================== NAVIGATION ===================== */
 function showView(id) {
@@ -50,12 +76,8 @@ function resetDetectionStability() {
 }
 
 function isPlausibleIsbnBarcode(raw) {
-  // allow digits and possibly X for ISBN-10
   const cleaned = raw.replace(/[^0-9X]/gi, "");
-  if (cleaned.length === 13) {
-    // ISBN-13 should usually start with 978 or 979
-    return cleaned.startsWith("978") || cleaned.startsWith("979");
-  }
+  if (cleaned.length === 13) return cleaned.startsWith("978") || cleaned.startsWith("979");
   if (cleaned.length === 10) return true;
   return false;
 }
@@ -71,7 +93,6 @@ async function startScanner() {
 
   await loadQuagga();
 
-  // Request higher-res camera stream up front (helps a lot on phones)
   try {
     mediaStream = await navigator.mediaDevices.getUserMedia({
       video: {
@@ -97,20 +118,19 @@ async function startScanner() {
           width: { ideal: 1920 },
           height: { ideal: 1080 },
         },
-        // Helps avoid iOS Safari forcing fullscreen
-        area: { top: "25%", right: "10%", left: "10%", bottom: "25%" }, // focus center area
+        area: { top: "25%", right: "10%", left: "10%", bottom: "25%" },
       },
       decoder: {
-        readers: ["ean_reader"], // EAN-13 covers ISBN-13 (978/979)
+        readers: ["ean_reader"],
         multiple: false,
       },
       locate: true,
       locator: {
         patchSize: "large",
-        halfSample: false, // more accurate (slower, but worth it on phones)
+        halfSample: false,
       },
       numOfWorkers: navigator.hardwareConcurrency || 4,
-      frequency: 10, // process 10 frames/sec
+      frequency: 10,
     },
     (err) => {
       if (err) {
@@ -130,14 +150,8 @@ async function startScanner() {
     }
   );
 
-  // Ensure we don't accumulate handlers.
   if (Quagga.offDetected) Quagga.offDetected(onDetectedRaw);
   Quagga.onDetected(onDetectedRaw);
-
-  // Optional: draw debug boxes (comment out if you don't want it)
-  // if (Quagga.onProcessed) {
-  //   Quagga.onProcessed((result) => {});
-  // }
 }
 
 function stopScanner() {
@@ -166,17 +180,14 @@ function onDetectedRaw(result) {
   const raw = result?.codeResult?.code;
   if (!raw) return;
 
-  // Filter out obviously non-ISBN EAN noise early
   if (!isPlausibleIsbnBarcode(raw)) return;
 
-  // Require the same code 3 times in a row (huge reliability improvement)
   if (raw === lastCode) sameCount += 1;
   else {
     lastCode = raw;
     sameCount = 1;
   }
 
-  // Also debounce accepts
   const now = Date.now();
   if (now - lastAcceptTs < 1200) return;
 
@@ -198,7 +209,7 @@ async function onDetected(result) {
   handleISBN(raw);
 }
 
-/* ===================== BOOK FLOW ===================== */
+/* ===================== BOOK LOOKUPS ===================== */
 function normalizeIsbn(raw) {
   return raw.replace(/[^0-9X]/gi, "");
 }
@@ -220,6 +231,7 @@ async function lookupGoogleBooks(isbn) {
     title: i.title || null,
     author: i.authors?.join(", ") || null,
     image: i.imageLinks?.thumbnail || null,
+    category: (i.categories && i.categories[0]) || null,
   };
 }
 
@@ -232,45 +244,34 @@ async function lookupOpenLibrary(isbn) {
   if (!b) return null;
 
   const title = b.title || null;
-  const author = b.authors?.map(a => a.name).join(", ") || null;
+  const author = b.authors?.map((a) => a.name).join(", ") || null;
 
-  // cover
   let image = b.cover?.medium || b.cover?.large || b.cover?.small || null;
   if (image) image = image.replace("http://", "https://");
   const fallback = `https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg`;
 
-  // subjects (best source = work subjects)
   let rawSubjects = [];
-
-  // sometimes api/books includes subjects directly
   if (Array.isArray(b.subjects) && b.subjects.length) {
-    rawSubjects = b.subjects.map(s => (typeof s === "string" ? s : s?.name)).filter(Boolean);
+    rawSubjects = b.subjects
+      .map((s) => (typeof s === "string" ? s : s?.name))
+      .filter(Boolean);
   }
 
-  // better: fetch work subjects
   try {
-    const workKey = b.works?.[0]?.key; // e.g. "/works/OL123W"
+    const workKey = b.works?.[0]?.key;
     if (workKey) {
       const wr = await fetch(`https://openlibrary.org${workKey}.json`);
       const wj = await wr.json();
-      if (Array.isArray(wj.subjects) && wj.subjects.length) {
-        rawSubjects = wj.subjects;
-      }
+      if (Array.isArray(wj.subjects) && wj.subjects.length) rawSubjects = wj.subjects;
     }
   } catch {}
 
   const category = normaliseCategory(rawSubjects);
 
-  return {
-    title,
-    author,
-    image: image || fallback,
-    category,
-  };
+  return { title, author, image: image || fallback, category };
 }
 
-
-
+/* ===================== BOOK FLOW ===================== */
 async function handleISBN(raw) {
   const isbn = normalizeIsbn(raw);
 
@@ -283,33 +284,47 @@ async function handleISBN(raw) {
   showToast("Searching...", "#6c5ce7");
 
   try {
-    // OpenLibrary first (category-aware), then Google fallback
     let meta = await lookupOpenLibrary(isbn);
     if (!meta) meta = await lookupGoogleBooks(isbn);
     if (!meta) throw new Error("Not found");
 
     const title = meta.title || "Unknown";
     const author = meta.author || "Unknown";
-    const image = (meta.image || `https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg`)
-      .replace("http://", "https://");
-
+    const image = (meta.image || `https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg`).replace(
+      "http://",
+      "https://"
+    );
     const category = meta.category || "General & Other";
 
     const isRead = await askReadStatus(title);
 
-    const book = { isbn, title, author, image, category, isRead };
+    const book = {
+      isbn,
+      title,
+      author,
+      image,
+      category,
+      readBy: emptyReadBy(),
+    };
+    book.readBy[CURRENT_USER] = !!isRead;
 
-    // upsert locally
-    myLibrary = myLibrary.filter(b => b.isbn !== isbn);
+    // upsert locally (keep any existing readBy for other users if we already had the book)
+    const existing = myLibrary.find((b) => b.isbn === isbn);
+    if (existing) {
+      ensureReadBy(existing);
+      book.readBy = { ...existing.readBy, ...book.readBy }; // preserve others
+      // but ensure the current user reflects the latest answer
+      book.readBy[CURRENT_USER] = !!isRead;
+    }
+
+    myLibrary = myLibrary.filter((b) => b.isbn !== isbn);
     myLibrary.push(book);
 
     saveLibrary();
-
-    // IMPORTANT: update filter dropdown + render via filters
     populateCategoryFilter();
     applyFilters();
 
-    cloudSync("add", book); // your GAS may return "Exists", but local will still be fine
+    cloudSync("add", book);
     showView("view-library");
   } catch (e) {
     console.error("Lookup failed:", e);
@@ -317,8 +332,6 @@ async function handleISBN(raw) {
     showView("view-home");
   }
 }
-
-
 
 /* ===================== CLOUD ===================== */
 async function loadLibrary() {
@@ -328,32 +341,58 @@ async function loadLibrary() {
     const res = await fetch(GOOGLE_SHEET_URL);
     const data = await res.json();
 
-    if (Array.isArray(data)) {
-      myLibrary = data.map(b => {
-        const isbn = (b.isbn || "").toString().trim();
-
-        const img =
-          (b.image || "").toString().replace("http://", "https://") ||
-          (isbn ? `https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg` : "");
-
-        return {
-          isbn,
-          title: b.title || "Unknown",
-          author: b.author || "Unknown",
-          image: img,
-          category: b.category || "General & Other",
-          isRead: !!b.isRead
-        };
-      });
-
-      saveLibrary();
+    if (!Array.isArray(data)) {
+      showToast("No data returned", "#dc3545");
       populateCategoryFilter();
-      applyFilters();        // renders library
-      showToast("Sync OK", "#28a745");
+      applyFilters();
       return;
     }
 
-    showToast("No data returned", "#dc3545");
+    myLibrary = data.map((b) => {
+      const isbn = (b.isbn || "").toString().trim();
+
+      const img =
+        (b.image || "").toString().replace("http://", "https://") ||
+        (isbn ? `https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg` : "");
+
+      // Accept multiple possible server shapes:
+      // 1) readBy: {sohini:true,...}
+      // 2) read_sohini/read_som/read_rehan columns
+      // 3) legacy isRead boolean/YES/NO (we assume it belonged to sohini)
+      let readBy = emptyReadBy();
+
+      if (b.readBy && typeof b.readBy === "object") {
+        readBy = { ...readBy, ...b.readBy };
+      } else if (
+        "read_sohini" in b ||
+        "read_som" in b ||
+        "read_rehan" in b
+      ) {
+        readBy.sohini = !!b.read_sohini;
+        readBy.som = !!b.read_som;
+        readBy.rehan = !!b.read_rehan;
+      } else if ("isRead" in b) {
+        // legacy: treat as sohini's status (so you don't lose old data)
+        readBy.sohini = !!b.isRead;
+      }
+
+      const book = {
+        isbn,
+        title: b.title || "Unknown",
+        author: b.author || "Unknown",
+        image: img,
+        category: b.category || "General & Other",
+        readBy,
+      };
+
+      ensureReadBy(book);
+      return book;
+    });
+
+    saveLibrary();
+    populateCategoryFilter();
+    applyFilters();
+    showToast("Sync OK", "#28a745");
   } catch (e) {
     console.error(e);
     showToast("Offline Mode", "#6c757d");
@@ -362,12 +401,13 @@ async function loadLibrary() {
   }
 }
 
-
-
 function cloudSync(action, book) {
+  // send current user too (useful on Apps Script side)
+  const payload = { action, user: CURRENT_USER, data: book };
+
   fetch(GOOGLE_SHEET_URL, {
     method: "POST",
-    body: JSON.stringify({ action, data: book }),
+    body: JSON.stringify(payload),
   }).catch(() => {});
 }
 
@@ -393,6 +433,9 @@ function renderLibrary(list = myLibrary) {
   ul.innerHTML = "";
 
   list.forEach((b) => {
+    ensureReadBy(b);
+    const mine = myReadStatus(b);
+
     const li = document.createElement("li");
     li.className = "book-item";
 
@@ -421,8 +464,8 @@ function renderLibrary(list = myLibrary) {
     category.textContent = "📚 " + (b.category || "Uncategorised");
 
     const flag = document.createElement("span");
-    flag.className = `status-flag ${b.isRead ? "read" : "unread"}`;
-    flag.textContent = b.isRead ? "✅ Read" : "📖 Unread";
+    flag.className = `status-flag ${mine ? "read" : "unread"}`;
+    flag.textContent = mine ? "✅ Read" : "📖 Unread";
     flag.onclick = () => toggleRead(b.isbn);
 
     const del = document.createElement("button");
@@ -436,13 +479,15 @@ function renderLibrary(list = myLibrary) {
   });
 }
 
-
 function toggleRead(isbn) {
   const b = myLibrary.find((x) => x.isbn === isbn);
   if (!b) return;
-  b.isRead = !b.isRead;
+
+  ensureReadBy(b);
+  b.readBy[CURRENT_USER] = !b.readBy[CURRENT_USER];
+
   saveLibrary();
-  renderLibrary();
+  applyFilters(); // re-render current filtered/sorted view
   cloudSync("update", b);
 }
 
@@ -450,8 +495,10 @@ function deleteBook(isbn) {
   if (!confirm("Delete?")) return;
   const b = myLibrary.find((x) => x.isbn === isbn);
   myLibrary = myLibrary.filter((x) => x.isbn !== isbn);
+
   saveLibrary();
-  renderLibrary();
+  applyFilters();
+
   if (b) cloudSync("delete", b);
   else cloudSync("delete", { isbn });
 }
@@ -482,9 +529,7 @@ function isValidISBN(isbn) {
   }
 
   if (isbn.length === 13) {
-    // Must be digits only
     if (!/^\d{13}$/.test(isbn)) return false;
-
     let sum = 0;
     for (let i = 0; i < 13; i++) {
       const n = parseInt(isbn[i], 10);
@@ -496,40 +541,89 @@ function isValidISBN(isbn) {
   return false;
 }
 
+/* ===================== FILTERS ===================== */
 function applyFilters() {
-  const q = document.getElementById("searchBox").value.toLowerCase();
-  const readFilter = document.getElementById("filterRead").value;
-  const catFilter = document.getElementById("filterCategory").value;
-  const sort = document.getElementById("sortBy").value;
+  const q = document.getElementById("searchBox")?.value?.toLowerCase() || "";
+  const readFilter = document.getElementById("filterRead")?.value || "all";
+  const catFilter = document.getElementById("filterCategory")?.value || "all";
+  const sort = document.getElementById("sortBy")?.value || "title";
 
   let books = [...myLibrary];
 
-  // SEARCH
   if (q) {
-    books = books.filter(b =>
-      (b.title || "").toLowerCase().includes(q) ||
-      (b.author || "").toLowerCase().includes(q) ||
-      (b.category || "").toLowerCase().includes(q) ||
-      (b.isbn || "").includes(q)
+    books = books.filter(
+      (b) =>
+        (b.title || "").toLowerCase().includes(q) ||
+        (b.author || "").toLowerCase().includes(q) ||
+        (b.category || "").toLowerCase().includes(q) ||
+        (b.isbn || "").includes(q)
     );
   }
 
-  // READ FILTER
-  if (readFilter === "read") books = books.filter(b => b.isRead);
-  if (readFilter === "unread") books = books.filter(b => !b.isRead);
+  if (readFilter === "read") books = books.filter((b) => myReadStatus(b));
+  if (readFilter === "unread") books = books.filter((b) => !myReadStatus(b));
 
-  // CATEGORY FILTER
-  if (catFilter !== "all") books = books.filter(b => b.category === catFilter);
+  if (catFilter !== "all") books = books.filter((b) => (b.category || "") === catFilter);
 
-  // SORT
-  books.sort((a, b) =>
-    (a[sort] || "").toString().localeCompare((b[sort] || "").toString())
-  );
+  books.sort((a, b) => ((a[sort] || "") + "").localeCompare(((b[sort] || "") + "")));
 
   renderLibrary(books);
   updateHomeStats();
 }
 
+function updateHomeStats() {
+  const total = myLibrary.length;
+  const read = myLibrary.filter((b) => myReadStatus(b)).length;
+
+  document.getElementById("stat-count").textContent = total;
+  document.getElementById("stat-read").textContent = read;
+  document.getElementById("stat-unread").textContent = total - read;
+}
+
+function populateCategoryFilter() {
+  const select = document.getElementById("filterCategory");
+  if (!select) return;
+
+  const cats = [...new Set(myLibrary.map((b) => b.category).filter(Boolean))].sort();
+  select.innerHTML =
+    `<option value="all">All categories</option>` +
+    cats.map((c) => `<option value="${c}">${c}</option>`).join("");
+}
+
+/* ===================== CATEGORY NORMALISATION ===================== */
+function normaliseCategory(subjects = []) {
+  const s = subjects.map((x) => String(x || "").toLowerCase());
+
+  if (s.some((x) => /mystery|detective|crime|thriller|suspense|private investigator|missing persons|murder/.test(x)))
+    return "Mystery & Thriller";
+
+  if (s.some((x) => /fantasy|quests|elder wand|mutants/.test(x))) return "Fantasy";
+  if (s.some((x) => /science fiction|sci-fi|alien/.test(x))) return "Science Fiction";
+  if (s.some((x) => /mythology/.test(x))) return "Mythology";
+
+  if (s.some((x) => /history|historical|roman|romans|england|great britain|asia/.test(x)))
+    return "History & Historical Fiction";
+
+  if (s.some((x) => /literary|english literature|american literature|classic|fiction/.test(x)))
+    return "Literary Fiction";
+
+  if (s.some((x) => /romance|love poetry|mothers and daughters/.test(x))) return "Romance & Relationships";
+  if (s.some((x) => /biography|authors|autobiography|biographical fiction/.test(x))) return "Biography & Memoir";
+  if (s.some((x) => /psychology|social|abuse|famil|brothers|society/.test(x))) return "Psychology & Society";
+  if (s.some((x) => /business|economics|leadership|management|corporation|strategy/.test(x))) return "Business & Economics";
+  if (s.some((x) => /self-help|critical thinking|contentment|life change|quality of work life/.test(x)))
+    return "Self-Help & Mindfulness";
+  if (s.some((x) => /children|juvenile|young adult|school/.test(x))) return "Children & Young Adult";
+  if (s.some((x) => /poetry|poems/.test(x))) return "Poetry";
+  if (s.some((x) => /religion|hindu|jewish/.test(x))) return "Religion & Spirituality";
+  if (s.some((x) => /technology|engineering|science/.test(x))) return "Technology & Science";
+  if (s.some((x) => /comic|graphic|astérix|tintin|art|music|humou?r|puzzle/.test(x))) return "Comics, Art & Humor";
+  if (s.some((x) => /travel/.test(x))) return "Travel & Adventure";
+  if (s.some((x) => /language|grammar|translation|education|school/.test(x))) return "Education & Language";
+  if (s.some((x) => /short stories/.test(x))) return "Short Stories";
+
+  return "General & Other";
+}
 
 /* ===================== MANUAL ISBN ===================== */
 document.getElementById("manual-btn").onclick = () => {
@@ -540,90 +634,25 @@ document.getElementById("manual-btn").onclick = () => {
 /* ===================== INIT ===================== */
 window.onload = () => {
   const saved = localStorage.getItem("myLibrary");
-  if (saved) myLibrary = JSON.parse(saved);
+  if (saved) {
+    try {
+      myLibrary = JSON.parse(saved) || [];
+      // upgrade any old records to readBy
+      myLibrary = myLibrary.map((b) => {
+        // legacy isRead -> assume it was sohini
+        if (!b.readBy && "isRead" in b) {
+          b.readBy = emptyReadBy();
+          b.readBy.sohini = !!b.isRead;
+        }
+        ensureReadBy(b);
+        return b;
+      });
+    } catch {
+      myLibrary = [];
+    }
+  }
 
   populateCategoryFilter();
   applyFilters();
   showView("view-home");
 };
-
-
-function updateHomeStats() {
-  const total = myLibrary.length;
-  const read = myLibrary.filter(b => b.isRead).length;
-  document.getElementById("stat-count").textContent = total;
-  document.getElementById("stat-read").textContent = read;
-  document.getElementById("stat-unread").textContent = total - read;
-}
-
-function normaliseCategory(subjects = []) {
-  const s = subjects.map(x => x.toLowerCase());
-
-  if (s.some(x => /mystery|detective|crime|thriller|suspense|private investigator|missing persons|murder/.test(x)))
-    return "Mystery & Thriller";
-
-  if (s.some(x => /fantasy|quests|elder wand|mutants/.test(x)))
-    return "Fantasy";
-
-  if (s.some(x => /science fiction|sci-fi|alien/.test(x)))
-    return "Science Fiction";
-
-  if (s.some(x => /mythology/.test(x)))
-    return "Mythology";
-
-  if (s.some(x => /history|historical|roman|romans|england|great britain|asia/.test(x)))
-    return "History & Historical Fiction";
-
-  if (s.some(x => /literary|english literature|american literature|classic|fiction/.test(x)))
-    return "Literary Fiction";
-
-  if (s.some(x => /romance|love poetry|mothers and daughters/.test(x)))
-    return "Romance & Relationships";
-
-  if (s.some(x => /biography|authors|autobiography|biographical fiction/.test(x)))
-    return "Biography & Memoir";
-
-  if (s.some(x => /psychology|social|abuse|famil|brothers|society/.test(x)))
-    return "Psychology & Society";
-
-  if (s.some(x => /business|economics|leadership|management|corporation|strategy/.test(x)))
-    return "Business & Economics";
-
-  if (s.some(x => /self-help|critical thinking|contentment|life change|quality of work life/.test(x)))
-    return "Self-Help & Mindfulness";
-
-  if (s.some(x => /children|juvenile|young adult|school/.test(x)))
-    return "Children & Young Adult";
-
-  if (s.some(x => /poetry|poems/.test(x)))
-    return "Poetry";
-
-  if (s.some(x => /religion|hindu|jewish/.test(x)))
-    return "Religion & Spirituality";
-
-  if (s.some(x => /technology|engineering|science/.test(x)))
-    return "Technology & Science";
-
-  if (s.some(x => /comic|graphic|astérix|tintin|art|music|humou?r|puzzle/.test(x)))
-    return "Comics, Art & Humor";
-
-  if (s.some(x => /travel/.test(x)))
-    return "Travel & Adventure";
-
-  if (s.some(x => /language|grammar|translation|education|school/.test(x)))
-    return "Education & Language";
-
-  if (s.some(x => /short stories/.test(x)))
-    return "Short Stories";
-
-  return "General & Other";
-}
-
-function populateCategoryFilter() {
-  const select = document.getElementById("filterCategory");
-  if (!select) return;
-
-  const cats = [...new Set(myLibrary.map(b => b.category).filter(Boolean))].sort();
-  select.innerHTML = `<option value="all">All categories</option>` +
-    cats.map(c => `<option value="${c}">${c}</option>`).join("");
-}
