@@ -224,7 +224,6 @@ async function lookupGoogleBooks(isbn) {
 }
 
 async function lookupOpenLibrary(isbn) {
-  // exact=true reduces “wrong edition” matches
   const url = `https://openlibrary.org/api/books?bibkeys=ISBN:${isbn}&format=json&jscmd=data&exact=true`;
   const r = await fetch(url);
   const j = await r.json();
@@ -233,19 +232,20 @@ async function lookupOpenLibrary(isbn) {
   if (!b) return null;
 
   const title = b.title || null;
-  const author = b.authors?.map((a) => a.name).join(", ") || null;
+  const author = b.authors?.map(a => a.name).join(", ") || null;
 
-  // Prefer cover field, but also provide a guaranteed cover URL fallback
-  let image = b.cover?.medium || b.cover?.large || b.cover?.small || null;
+  let category =
+    b.subjects?.map(s => s.name)
+      .find(s => !s.includes("accessible") && !s.includes("Protected")) || null;
+
+  let image = b.cover?.medium || b.cover?.large || null;
   if (image) image = image.replace("http://", "https://");
+
   const fallback = `https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg`;
 
-  return {
-    title,
-    author,
-    image: image || fallback,
-  };
+  return { title, author, image: image || fallback, category };
 }
+
 
 async function handleISBN(raw) {
   const isbn = normalizeIsbn(raw);
@@ -299,7 +299,8 @@ async function handleISBN(raw) {
     image = image.replace("http://", "https://");
 
     const isRead = await askReadStatus(title);
-    const book = { isbn, title, author, image, isRead };
+    const book = { isbn, title, author, image, category: meta?.category || "Uncategorised", isRead };
+
 
     myLibrary = myLibrary.filter(b => b.isbn !== isbn);
     myLibrary.push(book);
@@ -401,6 +402,11 @@ function renderLibrary(list = myLibrary) {
     author.style.opacity = ".7";
     author.textContent = b.author || "";
 
+    const category = document.createElement("div");
+    category.style.fontSize = ".7rem";
+    category.style.opacity = ".55";
+    category.textContent = "📚 " + (b.category || "Uncategorised");
+
     const flag = document.createElement("span");
     flag.className = `status-flag ${b.isRead ? "read" : "unread"}`;
     flag.textContent = b.isRead ? "✅ Read" : "📖 Unread";
@@ -411,12 +417,10 @@ function renderLibrary(list = myLibrary) {
     del.textContent = "🗑️";
     del.onclick = () => deleteBook(b.isbn);
 
-    info.append(title, author, flag);
+    info.append(title, author, category, flag);
     li.append(img, info, del);
     ul.appendChild(li);
   });
-
-  
 }
 
 
